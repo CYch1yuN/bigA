@@ -87,14 +87,15 @@ class FetchManager:
         source: str,
         fetch_fn: Callable[[DataProvider], pd.DataFrame],
     ) -> tuple[bool, pd.DataFrame, list[FetchAttempt]]:
-        """对单个数据源执行最多 max_retries 次尝试。
+        """对单个数据源执行 1 + max_retries 次尝试（首次请求 + max_retries 次重试）。
 
         返回 (success, data, attempts)。
         """
         provider = self._get_provider(source)
         attempts: list[FetchAttempt] = []
+        total_attempts = 1 + self.max_retries
 
-        for attempt_num in range(1, self.max_retries + 1):
+        for attempt_num in range(1, total_attempts + 1):
             start_time = time.monotonic()
             try:
                 data = fetch_fn(provider)
@@ -121,7 +122,7 @@ class FetchManager:
                 )
                 attempts.append(attempt)
                 # 非最后一次尝试时等待间隔
-                if attempt_num < self.max_retries:
+                if attempt_num < total_attempts:
                     time.sleep(self.request_interval)
 
         return False, pd.DataFrame(), attempts
@@ -214,7 +215,7 @@ def build_fetch_manifest(
     end_date: str,
     result: FetchResult,
     file_path: Any,
-    file_hash: str,
+    file_hash: Optional[str],
     config: AppConfig,
     schema_version: str,
     code_commit: str,
@@ -222,9 +223,16 @@ def build_fetch_manifest(
     """构建原始抓取清单。
 
     记录：请求范围、最终数据源、尝试记录（含重试与回退）、文件 SHA-256、
-    配置摘要与源码提交号。
+    配置摘要与源码提交号。失败时 file 为 null，file_hash 为 None。
     """
     from datetime import datetime, timezone
+
+    file_info: Optional[dict[str, Any]] = None
+    if file_path is not None and file_hash is not None:
+        file_info = {
+            "path": str(file_path),
+            "sha256": file_hash,
+        }
 
     manifest: dict[str, Any] = {
         "request": {
@@ -236,10 +244,8 @@ def build_fetch_manifest(
         "success": result.success,
         "row_count": int(len(result.data)) if result.success else 0,
         "attempts": result.attempt_log,
-        "file": {
-            "path": str(file_path),
-            "sha256": file_hash,
-        },
+        "total_attempts": len(result.attempts),
+        "file": file_info,
         "config_summary": {
             "providers": {
                 "primary": config.providers.primary,
@@ -256,6 +262,8 @@ def build_fetch_manifest(
         "schema_version": schema_version,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if result.error:
+        manifest["error"] = result.error
     return manifest
 
 

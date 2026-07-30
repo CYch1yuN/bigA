@@ -50,8 +50,10 @@ class SchemaConfig(BaseModel):
 class ProvidersConfig(BaseModel):
     primary: str = "akshare"
     fallback: str = "baostock"
-    max_retries: int = 3
-    request_interval_seconds: float = 1.0
+    # 失败后的重试次数（不含首次请求）；总尝试次数 = 1 + max_retries
+    max_retries: int = Field(default=3, ge=0)
+    # 重试间隔（秒），不得为负
+    request_interval_seconds: float = Field(default=1.0, ge=0)
 
 
 class AppConfig(BaseModel):
