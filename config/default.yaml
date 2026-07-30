@@ -22,9 +22,9 @@ providers:
   primary: "akshare"
   # 备用数据源
   fallback: "baostock"
-  # 抓取失败重试次数
+  # 抓取失败后的重试次数（不含首次请求）；总尝试次数 = 1 + max_retries
   max_retries: 3
-  # 单次请求间隔（秒）
+  # 单次请求间隔（秒），不得为负
   request_interval_seconds: 1.0
 
 quality:

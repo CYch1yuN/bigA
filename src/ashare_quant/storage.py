@@ -6,8 +6,10 @@ Parquet 用于持久化，DuckDB 用于查询与分析。
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pandas as pd
@@ -70,6 +72,17 @@ class Storage:
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / filename
         df.to_parquet(path, index=False, compression="snappy")
+        return path
+
+    def write_generic_json(
+        self, data: Any, filename: str, layer: str = LAYER_METADATA
+    ) -> Path:
+        """写通用 JSON 文件（默认元数据层）。"""
+        target_dir = self._layer_dir(layer)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / filename
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
         return path
 
     def read_parquet(self, path: str | Path) -> pd.DataFrame:
