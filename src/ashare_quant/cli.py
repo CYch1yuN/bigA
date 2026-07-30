@@ -11,10 +11,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +23,6 @@ from . import __version__
 from .config import default_config_path, load_config
 from .constants import SOURCE_AKSHARE, SOURCE_BAOSTOCK
 from .manifest import build_manifest, write_manifest, get_code_commit
-from .providers import AKShareProvider, BaoStockProvider
 from .quality import QualityChecker
 from .reports import (
     generate_coverage_report,
@@ -33,15 +31,7 @@ from .reports import (
 )
 from .samples import make_normal_raw, make_trade_calendar
 from .standardize import Standardizer, content_hash
-from .storage import Storage
-
-
-def _provider(name: str):
-    if name == SOURCE_AKSHARE:
-        return AKShareProvider()
-    if name == SOURCE_BAOSTOCK:
-        return BaoStockProvider()
-    raise ValueError(f"未知数据源: {name}")
+from .storage import Storage, file_sha256
 
 
 def cmd_init_config(args: argparse.Namespace) -> int:
@@ -58,15 +48,62 @@ def cmd_init_config(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
-    """抓取指定股票和日期范围（需数据源 SDK）。"""
+    """抓取指定股票和日期范围（需数据源 SDK）。
+
+    使用 FetchManager 实现重试与自动回退；抓取成功后保存 raw Parquet
+    并生成包含尝试记录、最终数据源和文件哈希的原始抓取清单。
+    """
+    config = load_config(args.config) if args.config else load_config(default_config_path())
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
-    provider = _provider(args.source)
-    raw = provider.fetch_daily_quotes(args.symbol, start, end)
+
+    from .fetcher import FetchManager, build_fetch_manifest
+
+    manager = FetchManager(config)
+    result = manager.fetch_daily_quotes(
+        symbol=args.symbol,
+        start_date=start,
+        end_date=end,
+        source=args.source if args.source != config.providers.primary else None,
+        allow_fallback=not args.no_fallback,
+    )
+
+    if not result.success:
+        print(f"抓取失败: {result.error}", file=sys.stderr)
+        for a in result.attempts:
+            status = "成功" if a.success else "失败"
+            print(
+                f"  尝试 {a.attempt_number}: {a.source} -> {status}"
+                + (f" ({a.error})" if a.error else ""),
+                file=sys.stderr,
+            )
+        return 1
+
     storage = Storage(args.data_dir)
-    fname = f"{args.source}_{args.symbol}_{args.start}_{args.end}.parquet"
-    path = storage.write_generic_parquet(raw, fname, layer="raw")
-    print(f"已抓取 {len(raw)} 行原始数据 -> {path}")
+    source_tag = result.final_source or args.source
+    fname = f"{source_tag}_{args.symbol}_{args.start}_{args.end}.parquet"
+    path = storage.write_generic_parquet(result.data, fname, layer="raw")
+
+    # 生成原始抓取清单
+    file_hash = file_sha256(path)
+    manifest = build_fetch_manifest(
+        symbol=args.symbol,
+        start_date=args.start,
+        end_date=args.end,
+        result=result,
+        file_path=path,
+        file_hash=file_hash,
+        config=config,
+        schema_version=config.schema_versions.daily_quote_version,
+        code_commit=get_code_commit(),
+    )
+    manifest_name = f"{source_tag}_{args.symbol}_{args.start}_{args.end}.manifest.json"
+    manifest_path = storage.write_generic_json(manifest, manifest_name, layer="metadata")
+
+    print(f"已抓取 {len(result.data)} 行原始数据 -> {path}")
+    print(f"最终数据源: {result.final_source}")
+    print(f"尝试记录: {len(result.attempts)} 次")
+    print(f"原始抓取清单: {manifest_path}")
     return 0
 
 
@@ -230,6 +267,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_fetch.add_argument("--end", required=True, help="YYYY-MM-DD")
     p_fetch.add_argument("--source", default=SOURCE_AKSHARE, choices=[SOURCE_AKSHARE, SOURCE_BAOSTOCK])
     p_fetch.add_argument("--data-dir", default="data")
+    p_fetch.add_argument("--config", help="配置文件路径")
+    p_fetch.add_argument("--no-fallback", action="store_true", help="禁用主源失败后自动回退备用源")
     p_fetch.set_defaults(func=cmd_fetch)
 
     p_std = sub.add_parser("standardize", help="标准化本地原始数据")
