@@ -1,0 +1,39 @@
+# --- 凭据 ---
+.env
+*.key
+*.pem
+*.p12
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- 数据（完整行情不进入 Git） ---
+data/
+!data/.gitkeep
+*.duckdb
+*.duckdb.wal
+*.parquet
+# 允许提交的示例数据样本（小型合成）除外
+!tests/data/*.parquet
+!tests/data/*.csv
+
+# --- 日志与生成产物 ---
+logs/
+# coverage.json 由测试生成，保留为报告输入
+reports/phase-1/coverage.json
+
+# --- 系统 ---
+.DS_Store
+Thumbs.db

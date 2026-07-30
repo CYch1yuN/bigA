@@ -1,0 +1,42 @@
+{
+  "source": "akshare",
+  "symbol": "000001",
+  "fetch_range": {
+    "start_date": "2024-01-02",
+    "end_date": "2024-03-15"
+  },
+  "row_count": 30,
+  "content_hash": "316088a9ddb0f49eaa8f1969a97acb79dfa888a86b8a1b7fbf996279895c7f5d",
+  "files": {
+    "raw": "cc97b73c59d9877662d0b4dec7c6421af55f3828fb962cab5c604e3030d31571",
+    "curated": "eb953203de4471452675f365e250d5113b63203f6bb6a1fce871b1675f02f188",
+    "calendar": "b3034fd4e21a9731974461fba4c716044f3287cc8461e9e9a3a9f896c91a6ed2"
+  },
+  "config_summary": {
+    "providers": {
+      "primary": "akshare",
+      "fallback": "baostock"
+    },
+    "schema": {
+      "daily_quote_version": "1.0.0",
+      "security_master_version": "1.0.0"
+    },
+    "quality_rules": {
+      "duplicate_primary_key": "critical",
+      "missing_trade_day": "critical",
+      "ohlc_relation": "critical",
+      "negative_price": "critical",
+      "negative_volume": "critical",
+      "required_completeness": "critical",
+      "raw_qfq_date_consistency": "critical",
+      "abnormal_volume": "{'severity': 'warning', 'lookback_days': 20, 'median_ratio_threshold': 20.0}",
+      "abnormal_price_jump": "{'severity': 'warning', 'abs_return_threshold': 0.2}",
+      "adjustment_factor_continuity": "{'severity': 'critical', 'max_factor_ratio': 5.0}",
+      "status_contradiction": "critical",
+      "cross_source": "{'severity': 'warning', 'close_relative_tolerance': 0.02, 'volume_relative_tolerance': 0.1}"
+    }
+  },
+  "code_commit": "no-git",
+  "schema_version": "1.0.0",
+  "generated_at": "2026-07-30T07:53:12.856399+00:00"
+}

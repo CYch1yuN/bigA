@@ -1,0 +1,75 @@
+# Phase 1 数据层默认配置
+# 所有质量阈值集中于此，禁止在代码中硬编码阈值。
+
+project:
+  name: "A 股双轨量化研究系统"
+  phase: "phase-1-data"
+
+paths:
+  data_dir: "data"
+  raw_dir: "data/raw"
+  curated_dir: "data/curated"
+  metadata_dir: "data/metadata"
+  reports_dir: "reports/phase-1"
+
+schema:
+  # 日行情与证券主数据 schema 版本；变更 schema 时递增。
+  daily_quote_version: "1.0.0"
+  security_master_version: "1.0.0"
+
+providers:
+  # 主数据源
+  primary: "akshare"
+  # 备用数据源
+  fallback: "baostock"
+  # 抓取失败重试次数
+  max_retries: 3
+  # 单次请求间隔（秒）
+  request_interval_seconds: 1.0
+
+quality:
+  # 严重等级：critical 会阻止下游处理并返回非零退出码；warning 仅记录。
+  # 主键重复
+  duplicate_primary_key: critical
+  # 缺失交易日
+  missing_trade_day: critical
+  # OHLC 关系错误（high < max(open,close,low) 或 low > min(open,close,high)）
+  ohlc_relation: critical
+  # 负价格
+  negative_price: critical
+  # 负成交量或成交额
+  negative_volume: critical
+  # 必需字段完整性：raw/qfq OHLC、成交量、成交额、复权因子缺失或非有限值
+  required_completeness: critical
+  # raw 与 qfq 日期集合不一致
+  raw_qfq_date_consistency: critical
+
+  # 异常成交量：单日成交量 / 过去 N 日中位数 > 倍数阈值
+  abnormal_volume:
+    severity: warning
+    lookback_days: 20
+    median_ratio_threshold: 20.0
+  # 异常价格跳变：单日收益率绝对值 > 阈值
+  abnormal_price_jump:
+    severity: warning
+    abs_return_threshold: 0.20  # 20%
+  # 复权连续性异常：前复权因子非单调或跳变倍数过大
+  adjustment_factor_continuity:
+    severity: critical
+    max_factor_ratio: 5.0  # 相邻交易日复权因子比值上限
+  # 股票状态矛盾：退市日早于上市日、停牌日成交量>0 等
+  status_contradiction: critical
+
+  cross_source:
+    # AKShare 与 BaoStock 跨源差异
+    severity: warning
+    # 收盘价相对差异容忍度
+    close_relative_tolerance: 0.02  # 2%
+    # 成交量相对差异容忍度
+    volume_relative_tolerance: 0.10  # 10%
+
+manifest:
+  # 内容哈希计算时排除的非确定字段（不影响复现性）
+  content_hash_exclude_fields:
+    - "fetched_at"
+    - "observed_at"

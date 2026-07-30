@@ -1,0 +1,80 @@
+{
+  "summary": {
+    "rows_checked": 30,
+    "symbols_checked": 1,
+    "critical": 0,
+    "warning": 2,
+    "total": 2
+  },
+  "config_summary": {
+    "duplicate_primary_key": {
+      "severity": "critical"
+    },
+    "missing_trade_day": {
+      "severity": "critical"
+    },
+    "ohlc_relation": {
+      "severity": "critical"
+    },
+    "negative_price": {
+      "severity": "critical"
+    },
+    "negative_volume": {
+      "severity": "critical"
+    },
+    "required_completeness": {
+      "severity": "critical"
+    },
+    "raw_qfq_date_consistency": {
+      "severity": "critical"
+    },
+    "abnormal_volume": {
+      "severity": "warning",
+      "lookback_days": 20,
+      "median_ratio_threshold": 20.0
+    },
+    "abnormal_price_jump": {
+      "severity": "warning",
+      "abs_return_threshold": 0.2
+    },
+    "adjustment_factor_continuity": {
+      "severity": "critical",
+      "max_factor_ratio": 5.0
+    },
+    "status_contradiction": {
+      "severity": "critical"
+    },
+    "cross_source": {
+      "severity": "warning",
+      "close_relative_tolerance": 0.02,
+      "volume_relative_tolerance": 0.1
+    }
+  },
+  "schema_version": "1.0.0",
+  "has_critical": false,
+  "exit_code": 0,
+  "issues": [
+    {
+      "check": "abnormal_price_jump",
+      "severity": "warning",
+      "symbol": "000001",
+      "trade_date": "2024-01-23",
+      "description": "异常价格跳变: 收益率绝对值超阈值 0.2",
+      "details": {
+        "close_qfq": 14.312986934788885,
+        "abs_return": 0.4099999999999999
+      }
+    },
+    {
+      "check": "abnormal_price_jump",
+      "severity": "warning",
+      "symbol": "000001",
+      "trade_date": "2024-01-24",
+      "description": "异常价格跳变: 收益率绝对值超阈值 0.2",
+      "details": {
+        "close_qfq": 10.171366823861982,
+        "abs_return": -0.2893609929078016
+      }
+    }
+  ]
+}

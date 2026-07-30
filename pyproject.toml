@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ashare-quant"
+version = "0.1.0"
+description = "A 股双轨量化研究系统 - Phase 1 数据层"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Trae Phase 1" }]
+dependencies = [
+    "duckdb>=0.10,<2.0",
+    "pyarrow>=14.0,<19.0",
+    "pandas>=2.0,<3.0",
+    "pydantic>=2.5,<3.0",
+    "pyyaml>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+# 数据源 SDK 仅在实际抓取时需要；离线测试与标准化/质量检查不依赖它们。
+sources = [
+    "akshare>=1.12,<2.0",
+    "baostock>=0.8.8,<1.0",
+]
+dev = [
+    "pytest>=7.4,<9.0",
+    "pytest-cov>=4.1,<6.0",
+]
+
+[project.scripts]
+ashare-quant = "ashare_quant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
