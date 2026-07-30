@@ -36,7 +36,7 @@
       "cross_source": "{'severity': 'warning', 'close_relative_tolerance': 0.02, 'volume_relative_tolerance': 0.1}"
     }
   },
-  "code_commit": "no-git",
+  "code_commit": "5a49bc4f729509ee029ec22b3b7b7188b1577535",
   "schema_version": "1.0.0",
-  "generated_at": "2026-07-30T09:20:05.272539+00:00"
+  "generated_at": "2026-07-30T10:09:34.549884+00:00"
 }
