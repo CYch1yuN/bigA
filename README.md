@@ -8,7 +8,7 @@
 - Codex：按 `docs/review-gates.md` 审核数据、回测、策略与自动化。
 - 每个阶段使用独立的 `trae/phase-*` 分支和 Pull Request；上一阶段通过后再开始下一阶段。
 
-当前阶段：`phase-1-data`（数据层）。
+当前阶段：`phase-2-backtester`（任务规格已就绪，等待Trae实现）。
 
 ## 安全要求
 
@@ -115,6 +115,7 @@ Parquet 用于文件存储，DuckDB 用于查询。`data/` 目录与完整行情
 ## 相关文档
 
 - 阶段任务：`docs/trae/phase-1-data.md`
+- Phase 2任务：`docs/trae/phase-2-backtester.md`
 - 审核闸门：`docs/review-gates.md`
 - 已知缺口：`docs/phase-1-limitations.md`
 - 示例报告：`reports/phase-1/`
