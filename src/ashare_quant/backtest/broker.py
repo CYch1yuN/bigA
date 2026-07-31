@@ -244,6 +244,10 @@ class AShareBrokerSimulator(BrokerSimulator):
         raw_open_price = quantize_price(open_raw)
 
         # 4. 构造成交记录
+        audit_flags: list[str] = []
+        if bar.prev_close_raw is None:
+            audit_flags.append("limit_check_unavailable")
+
         return Fill(
             order_id=order.order_id,
             fill_date=bar.trade_date,
@@ -257,6 +261,7 @@ class AShareBrokerSimulator(BrokerSimulator):
             transfer_fee=cost.transfer_fee,
             total_cost=cost.total_cost,
             cash_change=cost.cash_change,
+            audit_flags=audit_flags,
         )
 
     # ------------------------------------------------------------------ #

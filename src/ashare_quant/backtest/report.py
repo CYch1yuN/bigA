@@ -39,6 +39,7 @@ class ReportGenerator:
         "Phase 2 不处理分红、送股、拆并股和配股",
         "前复权价格仅用于信号，未复权价格用于成交",
         "仅支持下一交易日开盘市价撮合",
+        "code_commit 为运行元数据，不参与 content_hash 计算；audit_flags 参与计算",
     ]
 
     def __init__(self) -> None:
@@ -195,11 +196,12 @@ class ReportGenerator:
         if result.fills:
             lines.append(
                 "| 成交日 | 订单ID | 代码 | 方向 | 数量 | 滑点价 | 佣金 | "
-                "印花税 | 过户费 | 总费用 | 现金变化 | 成交额 |"
+                "印花税 | 过户费 | 总费用 | 现金变化 | 成交额 | 审计标记 |"
             )
             lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | "
-                "--- | --- | --- | --- |")
+                "--- | --- | --- | --- | --- |")
             for f in result.fills:
+                flags_str = ", ".join(f.audit_flags) if f.audit_flags else "-"
                 lines.append(
                     f"| {f.fill_date.isoformat()} "
                     f"| {f.order_id} "
@@ -212,7 +214,8 @@ class ReportGenerator:
                     f"| {self._fmt_money(f.transfer_fee)} "
                     f"| {self._fmt_money(f.total_cost)} "
                     f"| {self._fmt_money(f.cash_change)} "
-                    f"| {self._fmt_money(f.turnover)} |"
+                    f"| {self._fmt_money(f.turnover)} "
+                    f"| {flags_str} |"
                 )
         else:
             lines.append("无成交流水。")
@@ -227,10 +230,11 @@ class ReportGenerator:
         lines.append("")
         if rejected_or_cancelled:
             lines.append(
-                "| 订单ID | 代码 | 方向 | 数量 | 状态 | 拒绝原因 | 拒绝详情 |"
+                "| 订单ID | 代码 | 方向 | 数量 | 状态 | 拒绝原因 | 拒绝详情 | 审计标记 |"
             )
-            lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+            lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
             for o in rejected_or_cancelled:
+                flags_str = ", ".join(o.audit_flags) if o.audit_flags else "-"
                 lines.append(
                     f"| {o.order_id} "
                     f"| {o.signal.symbol} "
@@ -238,7 +242,8 @@ class ReportGenerator:
                     f"| {o.signal.quantity} "
                     f"| {self._enum_value(o.status)} "
                     f"| {self._enum_value(o.reject_reason) or '-'} "
-                    f"| {o.reject_detail or '-'} |"
+                    f"| {o.reject_detail or '-'} "
+                    f"| {flags_str} |"
                 )
         else:
             lines.append("无拒绝/取消订单。")
@@ -273,6 +278,7 @@ class ReportGenerator:
             "reject_reason",
             "reject_detail",
             "filled",
+            "audit_flags",
         ]
         rows: list[dict[str, Any]] = []
         for o in result.orders:
@@ -294,6 +300,7 @@ class ReportGenerator:
                     ),
                     "reject_detail": o.reject_detail,
                     "filled": o.fill is not None,
+                    "audit_flags": list(o.audit_flags),
                 }
             )
         return pd.DataFrame(rows, columns=columns)
@@ -316,6 +323,7 @@ class ReportGenerator:
             "total_cost",
             "cash_change",
             "turnover",
+            "audit_flags",
         ]
         rows: list[dict[str, Any]] = []
         for f in result.fills:
@@ -334,6 +342,7 @@ class ReportGenerator:
                     "total_cost": f.total_cost,
                     "cash_change": f.cash_change,
                     "turnover": f.turnover,
+                    "audit_flags": list(f.audit_flags),
                 }
             )
         return pd.DataFrame(rows, columns=columns)
@@ -418,6 +427,7 @@ class ReportGenerator:
                 else None
             ),
             "reject_detail": order.reject_detail,
+            "audit_flags": list(order.audit_flags),
             "fill": (
                 ReportGenerator._fill_to_dict(order.fill)
                 if order.fill is not None
@@ -441,6 +451,7 @@ class ReportGenerator:
             "total_cost": float(fill.total_cost),
             "cash_change": float(fill.cash_change),
             "turnover": float(fill.turnover),
+            "audit_flags": list(fill.audit_flags),
         }
 
     @staticmethod

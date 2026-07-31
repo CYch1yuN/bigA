@@ -270,7 +270,6 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     from .backtest.engine import BacktestEngine
     from .backtest.strategies import ScriptedStrategy, NoOpStrategy
     from .backtest.report import ReportGenerator
-    from .manifest import get_code_commit
 
     # 加载配置
     if args.config:
@@ -311,6 +310,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         initial_cash=bt_config.initial_cash,
         config=bt_config,
     )
+
+    # 设置代码提交号（运行元数据，不参与 content_hash）
+    result.code_commit = get_code_commit()
 
     # 验证账务恒等式
     for snap in result.daily_equity:

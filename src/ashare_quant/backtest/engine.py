@@ -134,6 +134,10 @@ class BacktestEngine(BacktestEngineABC):
                     dt, cash, positions, symbol_date_index, peak_equity
                 )
 
+                # 审计标记：缺少前收盘价时记录 limit_check_unavailable
+                if bar is not None and bar.prev_close_raw is None:
+                    order.audit_flags.append("limit_check_unavailable")
+
                 # 先风控校验（现金充足性、持仓比例等）
                 risk_decision = rm.validate(
                     order.signal, snapshot, bar, config, positions,
@@ -562,6 +566,7 @@ class BacktestEngine(BacktestEngineABC):
                         o.reject_reason.value if o.reject_reason else None
                     ),
                     "reject_detail": o.reject_detail,
+                    "audit_flags": sorted(o.audit_flags),
                 }
                 for o in result.orders
             ],
@@ -579,6 +584,7 @@ class BacktestEngine(BacktestEngineABC):
                     "transfer_fee": str(f.transfer_fee),
                     "total_cost": str(f.total_cost),
                     "cash_change": str(f.cash_change),
+                    "audit_flags": sorted(f.audit_flags),
                 }
                 for f in result.fills
             ],

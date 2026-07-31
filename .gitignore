@@ -34,6 +34,9 @@ data/
 logs/
 # coverage.json 由测试生成，保留为报告输入
 reports/phase-1/coverage.json
+# 临时 CLI 双跑目录（验证用，不得忽略正式 reports/phase-2/）
+reports/phase-2-run1/
+reports/phase-2-run2/
 
 # --- 系统 ---
 .DS_Store

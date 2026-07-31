@@ -80,6 +80,7 @@ class Order:
         reject_reason: 拒绝原因（如有）。
         reject_detail: 拒绝详情（如有）。
         fill: 成交记录（如已成交）。
+        audit_flags: 结构化审计标记列表（如 ``limit_check_unavailable``）。
     """
 
     signal: Signal
@@ -89,6 +90,7 @@ class Order:
     reject_reason: Optional[RejectReason] = None
     reject_detail: Optional[str] = None
     fill: Optional[Fill] = None
+    audit_flags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -110,6 +112,7 @@ class Fill:
         transfer_fee: 过户费。
         total_cost: 总费用（佣金+印花税+过户费）。
         cash_change: 现金变化（买入为负，卖出为正）。
+        audit_flags: 结构化审计标记列表（如 ``limit_check_unavailable``）。
     """
 
     order_id: str
@@ -124,6 +127,7 @@ class Fill:
     transfer_fee: Decimal
     total_cost: Decimal
     cash_change: Decimal
+    audit_flags: list[str] = field(default_factory=list)
 
     @property
     def turnover(self) -> Decimal:

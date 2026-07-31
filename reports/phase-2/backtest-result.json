@@ -185,6 +185,7 @@
       "status": "FILLED",
       "reject_reason": null,
       "reject_detail": null,
+      "audit_flags": [],
       "fill": {
         "order_id": "4bf05e08b3fe9964",
         "fill_date": "2024-01-03",
@@ -198,7 +199,8 @@
         "transfer_fee": 0.01,
         "total_cost": 5.01,
         "cash_change": -1006.01,
-        "turnover": 1001.0
+        "turnover": 1001.0,
+        "audit_flags": []
       }
     },
     {
@@ -212,6 +214,7 @@
       "status": "FILLED",
       "reject_reason": null,
       "reject_detail": null,
+      "audit_flags": [],
       "fill": {
         "order_id": "fe17e61a86f21886",
         "fill_date": "2024-01-08",
@@ -225,7 +228,8 @@
         "transfer_fee": 0.01,
         "total_cost": 6.01,
         "cash_change": 992.99,
-        "turnover": 999.0
+        "turnover": 999.0,
+        "audit_flags": []
       }
     },
     {
@@ -239,6 +243,7 @@
       "status": "REJECTED",
       "reject_reason": "UNIVERSE_FILTERED",
       "reject_detail": "000002: 股票池过滤: 000002: 2024-01-08 一手金额 502.00 < 最低 1000.00",
+      "audit_flags": [],
       "fill": null
     }
   ],
@@ -256,7 +261,8 @@
       "transfer_fee": 0.01,
       "total_cost": 5.01,
       "cash_change": -1006.01,
-      "turnover": 1001.0
+      "turnover": 1001.0,
+      "audit_flags": []
     },
     {
       "order_id": "fe17e61a86f21886",
@@ -271,7 +277,8 @@
       "transfer_fee": 0.01,
       "total_cost": 6.01,
       "cash_change": 992.99,
-      "turnover": 999.0
+      "turnover": 999.0,
+      "audit_flags": []
     }
   ],
   "daily_equity": [
@@ -378,7 +385,8 @@
   "limitations": [
     "Phase 2 不处理分红、送股、拆并股和配股",
     "前复权价格仅用于信号，未复权价格用于成交",
-    "仅支持下一交易日开盘市价撮合"
+    "仅支持下一交易日开盘市价撮合",
+    "code_commit 为运行元数据，不参与 content_hash 计算；audit_flags 参与计算"
   ],
   "data_range": {
     "start_date": "2024-01-02",
@@ -389,6 +397,6 @@
       "000002"
     ]
   },
-  "content_hash": "7762b47da6835ed67780451fac93c3d58bd5bf73d1e54d412e47cc8ddbe03e96",
-  "code_commit": null
+  "content_hash": "885fe38a4142b91b9f5c27bb0611830f87d6beeedfe9152808fc1f0ea6186fd0",
+  "code_commit": "no-git"
 }
