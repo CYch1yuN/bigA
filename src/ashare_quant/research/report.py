@@ -38,6 +38,7 @@ from .analysis import (
     ResearchResult,
     TrackResult,
     TrackType,
+    safe_metric,
 )
 from .monte_carlo import MonteCarloResult
 from .stress import MarketRegime, MarketRegimeResult, StressResult
@@ -370,10 +371,10 @@ class ResearchReportGenerator:
                     "selected_params": json.dumps(fr.selected_params, sort_keys=True, default=str),
                     "selection_reason": fr.selection_reason,
                     "eliminated_count": len(fr.eliminated_candidates),
-                    "test_total_return": float(test_metrics.get("total_return", 0.0) or 0.0),
-                    "test_max_drawdown": float(test_metrics.get("max_drawdown", 0.0) or 0.0),
-                    "benchmark_hs300": float(fr.benchmark_returns.get("hs300", 0.0) or 0.0) if isinstance(fr.benchmark_returns.get("hs300"), (int, float)) else 0.0,
-                    "benchmark_csi_all": float(fr.benchmark_returns.get("csi_all", 0.0) or 0.0) if isinstance(fr.benchmark_returns.get("csi_all"), (int, float)) else 0.0,
+                    "test_total_return": safe_metric(test_metrics, "total_return", 0.0),
+                    "test_max_drawdown": safe_metric(test_metrics, "max_drawdown", 0.0),
+                    "benchmark_hs300": float(fr.benchmark_returns.get("hs300")) if isinstance(fr.benchmark_returns.get("hs300"), (int, float)) else 0.0,
+                    "benchmark_csi_all": float(fr.benchmark_returns.get("csi_all")) if isinstance(fr.benchmark_returns.get("csi_all"), (int, float)) else 0.0,
                 })
         return pd.DataFrame(rows, columns=columns)
 
@@ -519,10 +520,10 @@ class ResearchReportGenerator:
                 rows.append({
                     "track": track.track_type,
                     "param_key": combo.get("param_key", ""),
-                    "total_return": float(combo.get("total_return", 0.0) or 0.0),
-                    "annualized_return": float(combo.get("annualized_return", 0.0) or 0.0),
-                    "max_drawdown": float(combo.get("max_drawdown", 0.0) or 0.0),
-                    "turnover_rate": float(combo.get("turnover_rate", 0.0) or 0.0),
+                    "total_return": safe_metric(combo, "total_return", 0.0),
+                    "annualized_return": safe_metric(combo, "annualized_return", 0.0),
+                    "max_drawdown": safe_metric(combo, "max_drawdown", 0.0),
+                    "turnover_rate": safe_metric(combo, "turnover_rate", 0.0),
                     "is_baseline": combo.get("param_key", "") == combo.get("baseline_key", ""),
                 })
 
@@ -802,8 +803,8 @@ class ResearchReportGenerator:
                 test_ret = 0.0
                 test_dd = 0.0
                 if fr.test_result and fr.test_result.metrics:
-                    test_ret = float(fr.test_result.metrics.get("total_return", 0.0) or 0.0)
-                    test_dd = float(fr.test_result.metrics.get("max_drawdown", 0.0) or 0.0)
+                    test_ret = safe_metric(fr.test_result.metrics, "total_return", 0.0)
+                    test_dd = safe_metric(fr.test_result.metrics, "max_drawdown", 0.0)
                 hs300 = fr.benchmark_returns.get("hs300", 0.0)
                 if not isinstance(hs300, (int, float)):
                     hs300 = 0.0

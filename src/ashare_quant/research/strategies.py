@@ -590,7 +590,10 @@ class AggressiveStrategy(Strategy):
                 continue
 
             # 相对强度: 个股 RS 日收益 - 沪深300 同期收益
-            rs = self._compute_relative_strength(close_qfq, dt)
+            # 显式传入 trade_dates，不依赖 DataFrame/Series 索引保存交易日期
+            rs = self._compute_relative_strength(
+                close_qfq, sym_data["trade_date"], dt
+            )
             if rs is None:
                 continue
             if rs <= 0:
@@ -670,28 +673,31 @@ class AggressiveStrategy(Strategy):
         )
 
     def _compute_relative_strength(
-        self, stock_close: pd.Series, dt: date
+        self,
+        stock_close: pd.Series,
+        trade_dates: pd.Series,
+        dt: date,
     ) -> Optional[float]:
-        """计算个股相对沪深300的相对强度。"""
+        """计算个股相对沪深300的相对强度。
+
+        显式从 ``trade_dates`` 取得相对强度起止日期，
+        不依赖 DataFrame/Series 索引保存交易日期。
+        """
         if not self._benchmark_hs300:
             return None
 
         window = self._params.relative_strength_window
         if len(stock_close) < window + 1:
             return None
+        if len(trade_dates) < window + 1:
+            return None
 
         # 个股收益
         stock_return = float(stock_close.iloc[-1] / stock_close.iloc[-window - 1] - 1.0)
 
-        # 沪深300收益（按交易日对齐）
-        # 获取个股的交易日期
-        stock_dates = stock_close.index.tolist()
-        if len(stock_dates) < window + 1:
-            return None
-
-        # 尝试获取对应日期的基准价格
-        end_date = _to_date(stock_dates[-1])
-        start_date = _to_date(stock_dates[-window - 1])
+        # 显式从 trade_dates 取得起止日期（不使用 stock_close.index）
+        end_date = _to_date(trade_dates.iloc[-1])
+        start_date = _to_date(trade_dates.iloc[-window - 1])
 
         if end_date is None or start_date is None:
             return None

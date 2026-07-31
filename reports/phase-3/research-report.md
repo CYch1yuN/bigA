@@ -2,9 +2,9 @@
 
 ## 元数据
 
-- 代码提交号: `no-git`
-- 配置哈希: `a9d33a12a7421eafb10b7208a7fd8c877666fee7404276e037e841f85bc44a48`
-- 数据哈希: `2e3f35c79556e3131d5accab5137cbe292c70218c0365c68485ff52916ef7057`
+- 代码提交号: `a0e8423749251d6c5217e5961dc2988e5949a408`
+- 配置哈希: `f5e5f42c1e194e4c4b23f7928159bd775d42c5bf0264626bc535c0a62a8851c1`
+- 数据哈希: `91040e98fa74aa1c104fdfd82a9fe2708859848fba66aeaf231358716a979c70`
 - 初始资金: 1000.00
 - 样本不足: 否
 
@@ -32,9 +32,9 @@
 
 | 折ID | 选定参数 | 选择理由 | 测试总收益 | 测试回撤 | HS300 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | 无候选满足回撤约束，使用基线 | 0.00% | 0.00% | 8.14% |
-| 1 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | 无候选满足回撤约束，使用基线 | 0.00% | 0.00% | 8.11% |
-| 2 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | 无候选满足回撤约束，使用基线 | 0.00% | 0.00% | 8.08% |
+| 0 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | Calmar=0.0000, 回撤=0.0114, 换手率=0.0857 | 0.00% | 0.00% | 8.14% |
+| 1 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | Calmar=0.0000, 回撤=0.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.11% |
+| 2 | {"trend_window": 120, "momentum_window": 60, "volatility_window": 20, "minimum_score": 0.0} | Calmar=0.0000, 回撤=0.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.08% |
 
 ### 基准比较
 
@@ -54,7 +54,7 @@
 
 ### 参数扰动
 
-- 总组合数: 81
+- 总组合数: 1
 - 正收益比例: 0.00%
 - 收益中位数: 0.00%
 - 收益P10: 0.00%
@@ -86,9 +86,9 @@
 
 | 折ID | 选定参数 | 选择理由 | 测试总收益 | 测试回撤 | HS300 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=-1.0000, 回撤=1.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.14% |
-| 1 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=-1.0000, 回撤=1.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.11% |
-| 2 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=-1.0000, 回撤=1.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.08% |
+| 0 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=0.0000, 回撤=0.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.14% |
+| 1 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=0.0000, 回撤=0.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.11% |
+| 2 | {"breakout_window": 20, "volume_window": 20, "volume_ratio": 1.5, "relative_strength_window": 20, "exit_low_window": 10, "max_holding_days": 20} | 几何收益=0.0000, 回撤=0.0000, 换手率=0.0000 | 0.00% | 0.00% | 8.08% |
 
 ### 基准比较
 
@@ -108,7 +108,7 @@
 
 ### 参数扰动
 
-- 总组合数: 729
+- 总组合数: 1
 - 正收益比例: 0.00%
 - 收益中位数: 0.00%
 - 收益P10: 0.00%
@@ -127,7 +127,7 @@
 ## 蒙特卡洛概率分析（激进轨）
 
 - 随机种子: 20260731
-- 路径数: 100
+- 路径数: 10000
 - 块长度: 5
 - 样本外天数: 782
 - 样本不足: 否
@@ -153,8 +153,7 @@
 
 - **状态**: `NOT_ELIGIBLE_FOR_LIVE_TRADING`
 - **失败原因**:
-  - 拼接样本外最大回撤 1.0000 超过 20%
-  - 拼接样本外年化收益 -1.0000 不大于 0
+  - 拼接样本外年化收益 0.0000 不大于 0
   - 正收益折比例 0.00% 低于 60%
   - 联合 2 倍压力下年化收益 0.0000 不大于 0
   - 参数扰动收益中位数 0.0000 不大于 0
@@ -162,8 +161,8 @@
 
 | 条件 | 值 | 阈值 | 通过 |
 | --- | --- | --- | --- |
-| max_drawdown_le_20pct | 100.00% | 20.00% | 否 |
-| oos_annualized_return_positive | -100.00% | 0.00% | 否 |
+| max_drawdown_le_20pct | 0.00% | 20.00% | 是 |
+| oos_annualized_return_positive | 0.00% | 0.00% | 否 |
 | positive_fold_ratio_ge_60pct | 0.00% | 60.00% | 否 |
 | combined_stress_annualized_return_positive | 0.00% | 0.00% | 否 |
 | param_perturbation_median_positive | 0.00% | 0.00% | 否 |

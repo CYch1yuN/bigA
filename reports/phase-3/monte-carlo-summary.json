@@ -14,7 +14,7 @@
   },
   "n_oos_days": 782,
   "block_length": 5,
-  "n_paths": 100,
+  "n_paths": 10000,
   "random_seed": 20260731,
   "insufficient_sample": false,
   "disclaimer": "蒙特卡洛结果仅用于概率研究，不构成收益承诺。激进轨永远为 SIMULATION_ONLY。"

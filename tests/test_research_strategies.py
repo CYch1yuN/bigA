@@ -304,21 +304,9 @@ def _make_permissive_filter(
 
 
 def _bars_up_to(quotes: pd.DataFrame, dt: date) -> pd.DataFrame:
-    """截取截至 dt 的行情（保留整数索引）。"""
+    """截取截至 dt 的行情（保留 RangeIndex，不设日期索引）。"""
     ts = pd.Timestamp(dt)
     return quotes[pd.to_datetime(quotes["trade_date"]) <= ts].copy()
-
-
-def _bars_up_to_indexed(quotes: pd.DataFrame, dt: date) -> pd.DataFrame:
-    """截取截至 dt 的行情，并将 trade_date 设为索引（清除索引名避免歧义）。
-
-    激进轨 ``_compute_relative_strength`` 依赖 ``close_qfq.index`` 获取
-    交易日日期以查找基准价格，因此需要日期索引。
-    """
-    bars = _bars_up_to(quotes, dt)
-    bars = bars.set_index("trade_date", drop=False)
-    bars.index.name = None
-    return bars
 
 
 def _build_context(
@@ -839,7 +827,7 @@ class TestAggressiveStrategyDaily:
         signal_dt = agg_dates[25]
         # 确认信号日不是周五
         assert signal_dt.weekday() != 4
-        bars = _bars_up_to_indexed(quotes, signal_dt)
+        bars = _bars_up_to(quotes, signal_dt)
         ctx = _build_context(signal_dt, bars, cash=100_000.0)
         signals = strategy.on_close(ctx)
         buys = [s for s in signals if s.side == Side.BUY]
@@ -1027,7 +1015,7 @@ class TestAggressiveStrategyMaxOnePosition:
             benchmark_hs300=bench,
         )
         dt = dates[25]
-        bars = _bars_up_to_indexed(quotes, dt)
+        bars = _bars_up_to(quotes, dt)
         ctx = _build_context(dt, bars, cash=100_000.0)
         signals = strategy.on_close(ctx)
         buys = [s for s in signals if s.side == Side.BUY]
@@ -1048,7 +1036,7 @@ class TestAggressiveStrategyMaxOnePosition:
             benchmark_hs300=bench,
         )
         dt = dates[25]
-        bars = _bars_up_to_indexed(quotes, dt)
+        bars = _bars_up_to(quotes, dt)
         ctx = _build_context(
             dt, bars, cash=100_000.0,
             positions={"000001": _make_position("000001")},
@@ -1121,7 +1109,7 @@ class TestSignalOrdering:
             benchmark_hs300=bench,
         )
         dt = dates[25]
-        bars = _bars_up_to_indexed(quotes, dt)
+        bars = _bars_up_to(quotes, dt)
         ctx = _build_context(
             dt, bars, cash=100_000.0,
             positions={"000001": _make_position("000001")},
@@ -1215,3 +1203,4 @@ class TestBuyQuantityCalc:
         assert aggressive_calc._calc_buy_quantity(10000, 5.0) == 1900
         assert aggressive_calc._calc_buy_quantity(1000, 10.0) == 0
         assert aggressive_calc._calc_buy_quantity(1000, 15.0) == 0
+

@@ -501,7 +501,7 @@ def make_test_research_env(
     """构造一个完整的测试环境字典。
 
     Returns:
-        包含 quotes, status_table, universe_filter, benchmark, bt_config, 
+        包含 quotes, status_table, universe_filter, benchmark, bt_config,
         walk_forward_config, monte_carlo_config 的字典。
     """
     from ashare_quant.backtest.config import BacktestConfig

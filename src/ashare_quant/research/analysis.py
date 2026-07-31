@@ -78,7 +78,31 @@ __all__ = [
     "run_walk_forward",
     "check_steady_eligibility",
     "ResearchRunner",
+    "safe_metric",
 ]
+
+
+def safe_metric(metrics: dict[str, Any], key: str, fallback: float) -> float:
+    """安全读取浮点指标。
+
+    仅当字段缺失或为 None 时使用 fallback。
+    0.0 是合法值，不得被 ``or`` 替换。
+
+    Args:
+        metrics: 指标字典。
+        key: 指标键名。
+        fallback: 字段缺失或为 None 时的回退值。
+
+    Returns:
+        浮点指标值。
+    """
+    val = metrics.get(key)
+    if val is None:
+        return fallback
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return fallback
 
 
 # ---------------------------------------------------------------------- #
@@ -397,10 +421,10 @@ def select_steady_params(
 
     for params, result in validation_results:
         m = calc.calculate(result, to_decimal(1000.0))
-        max_dd = float(m.get("max_drawdown", 1.0) or 1.0)
-        calmar = float(m.get("calmar", 0.0) or 0.0)
-        turnover = float(m.get("turnover_rate", 0.0) or 0.0)
-        annual_ret = float(m.get("annualized_return", 0.0) or 0.0)
+        max_dd = safe_metric(m, "max_drawdown", 1.0)
+        calmar = safe_metric(m, "calmar", 0.0)
+        turnover = safe_metric(m, "turnover_rate", 0.0)
+        annual_ret = safe_metric(m, "annualized_return", 0.0)
 
         param_key = _steady_param_key(params)
 
@@ -476,9 +500,9 @@ def select_aggressive_params(
 
     for params, result in validation_results:
         m = calc.calculate(result, to_decimal(1000.0))
-        total_return = float(m.get("total_return", -1.0) or -1.0)
-        max_dd = float(m.get("max_drawdown", 1.0) or 1.0)
-        turnover = float(m.get("turnover_rate", 0.0) or 0.0)
+        total_return = safe_metric(m, "total_return", -1.0)
+        max_dd = safe_metric(m, "max_drawdown", 1.0)
+        turnover = safe_metric(m, "turnover_rate", 0.0)
 
         # 几何收益 = (1 + total_return)^(1/years) - 1
         years = len(result.daily_equity) / TRADING_DAYS_PER_YEAR if result.daily_equity else 1.0
@@ -584,7 +608,7 @@ def check_steady_eligibility(
     failures: list[str] = []
 
     # 条件 1: 最大回撤不超过 20%
-    max_dd = float(oos_metrics.get("max_drawdown", 1.0) or 1.0)
+    max_dd = safe_metric(oos_metrics, "max_drawdown", 1.0)
     cond1_pass = max_dd <= 0.20
     conditions.append({
         "name": "max_drawdown_le_20pct",
@@ -596,7 +620,7 @@ def check_steady_eligibility(
         failures.append(f"拼接样本外最大回撤 {max_dd:.4f} 超过 20%")
 
     # 条件 2: 年化收益大于 0
-    ann_ret = float(oos_metrics.get("annualized_return", -1.0) or -1.0)
+    ann_ret = safe_metric(oos_metrics, "annualized_return", -1.0)
     cond2_pass = ann_ret > 0
     conditions.append({
         "name": "oos_annualized_return_positive",
@@ -613,7 +637,7 @@ def check_steady_eligibility(
     for fr in fold_results:
         if fr.test_result is not None and fr.test_result.metrics:
             total_folds += 1
-            if float(fr.test_result.metrics.get("total_return", -1.0) or -1.0) > 0:
+            if safe_metric(fr.test_result.metrics, "total_return", -1.0) > 0:
                 positive_folds += 1
     positive_ratio = positive_folds / total_folds if total_folds > 0 else 0.0
     cond3_pass = positive_ratio >= 0.60
@@ -1009,10 +1033,10 @@ class ResearchRunner:
                     m = calc.calculate(result, to_decimal(initial_cash))
                     all_results.append({
                         "param_key": param_key,
-                        "total_return": float(m.get("total_return", 0.0) or 0.0),
-                        "annualized_return": float(m.get("annualized_return", 0.0) or 0.0),
-                        "max_drawdown": float(m.get("max_drawdown", 0.0) or 0.0),
-                        "turnover_rate": float(m.get("turnover_rate", 0.0) or 0.0),
+                        "total_return": safe_metric(m, "total_return", 0.0),
+                        "annualized_return": safe_metric(m, "annualized_return", 0.0),
+                        "max_drawdown": safe_metric(m, "max_drawdown", 0.0),
+                        "turnover_rate": safe_metric(m, "turnover_rate", 0.0),
                     })
                 except Exception:
                     all_results.append({
@@ -1047,10 +1071,10 @@ class ResearchRunner:
                     m = calc.calculate(result, to_decimal(initial_cash))
                     all_results.append({
                         "param_key": param_key,
-                        "total_return": float(m.get("total_return", 0.0) or 0.0),
-                        "annualized_return": float(m.get("annualized_return", 0.0) or 0.0),
-                        "max_drawdown": float(m.get("max_drawdown", 0.0) or 0.0),
-                        "turnover_rate": float(m.get("turnover_rate", 0.0) or 0.0),
+                        "total_return": safe_metric(m, "total_return", 0.0),
+                        "annualized_return": safe_metric(m, "annualized_return", 0.0),
+                        "max_drawdown": safe_metric(m, "max_drawdown", 0.0),
+                        "turnover_rate": safe_metric(m, "turnover_rate", 0.0),
                     })
                 except Exception:
                     all_results.append({
