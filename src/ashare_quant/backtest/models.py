@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -74,17 +73,18 @@ class Order:
     """订单：由信号生成，等待下一交易日开盘撮合。
 
     Attributes:
-        order_id: 全局唯一标识。
         signal: 关联的交易信号。
         planned_fill_date: 计划成交日（signal_date + 1 交易日）。
+        order_id: 全局唯一标识，由 BacktestEngine 确定性生成。
         status: 当前状态。
         reject_reason: 拒绝原因（如有）。
+        reject_detail: 拒绝详情（如有）。
         fill: 成交记录（如已成交）。
     """
 
     signal: Signal
     planned_fill_date: date
-    order_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    order_id: str = ""
     status: OrderStatus = OrderStatus.PENDING
     reject_reason: Optional[RejectReason] = None
     reject_detail: Optional[str] = None

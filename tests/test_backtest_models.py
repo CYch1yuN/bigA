@@ -152,9 +152,10 @@ class TestOrder:
     def _signal() -> Signal:
         return Signal(date(2024, 1, 2), "000001", Side.BUY, 100)
 
-    def test_default_order_id_is_12_chars(self) -> None:
+    def test_default_order_id_is_empty(self) -> None:
+        """Order 默认 order_id 为空字符串，由 BacktestEngine 确定性赋值。"""
         order = Order(signal=self._signal(), planned_fill_date=date(2024, 1, 3))
-        assert len(order.order_id) == 12
+        assert order.order_id == ""
         assert isinstance(order.order_id, str)
 
     def test_default_status_is_pending(self) -> None:
@@ -646,29 +647,48 @@ class TestRiskDecision:
 # 16. Order ID 唯一性
 # -----------------------------------------------------------------------------
 class TestOrderIdUniqueness:
-    """订单 ID 唯一性：生成 100 个订单，全部唯一。"""
+    """订单 ID 唯一性：引擎确定性生成时，100 个订单全部唯一。
 
-    def test_100_orders_unique_ids(self) -> None:
+    Order.order_id 默认为空字符串，由 BacktestEngine 通过
+    _generate_order_id(run_hash, seq) 确定性赋值。
+    """
+
+    def test_100_orders_unique_ids_with_explicit_ids(self) -> None:
         sig = Signal(date(2024, 1, 2), "000001", Side.BUY, 100)
         orders = [
-            Order(signal=sig, planned_fill_date=date(2024, 1, 3))
-            for _ in range(100)
+            Order(
+                signal=sig,
+                planned_fill_date=date(2024, 1, 3),
+                order_id=f"testhash-{i:04d}",
+            )
+            for i in range(100)
         ]
         ids = [o.order_id for o in orders]
         assert len(ids) == 100
         assert len(set(ids)) == 100  # 全部唯一
 
-    def test_all_ids_length_12(self) -> None:
+    def test_explicit_ids_are_stable(self) -> None:
+        """相同显式 ID 的两个 Order 的 order_id 相同。"""
         sig = Signal(date(2024, 1, 2), "000001", Side.BUY, 100)
-        orders = [
-            Order(signal=sig, planned_fill_date=date(2024, 1, 3))
-            for _ in range(50)
-        ]
-        for o in orders:
-            assert len(o.order_id) == 12
+        o1 = Order(
+            signal=sig, planned_fill_date=date(2024, 1, 3),
+            order_id="abcdef12-0001",
+        )
+        o2 = Order(
+            signal=sig, planned_fill_date=date(2024, 1, 3),
+            order_id="abcdef12-0001",
+        )
+        assert o1.order_id == o2.order_id
 
     def test_two_consecutive_orders_differ(self) -> None:
+        """引擎生成时，连续两个序号的 order_id 不同。"""
         sig = Signal(date(2024, 1, 2), "000001", Side.BUY, 100)
-        o1 = Order(signal=sig, planned_fill_date=date(2024, 1, 3))
-        o2 = Order(signal=sig, planned_fill_date=date(2024, 1, 3))
+        o1 = Order(
+            signal=sig, planned_fill_date=date(2024, 1, 3),
+            order_id="abcdef12-0001",
+        )
+        o2 = Order(
+            signal=sig, planned_fill_date=date(2024, 1, 3),
+            order_id="abcdef12-0002",
+        )
         assert o1.order_id != o2.order_id

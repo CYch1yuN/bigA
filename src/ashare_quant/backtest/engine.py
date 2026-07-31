@@ -102,6 +102,10 @@ class BacktestEngine(BacktestEngineABC):
             # 无交易日，生成空结果
             return self._build_empty_result(config, initial_cash, start_date, end_date)
 
+        # 3.1 计算运行指纹（用于确定性订单 ID 生成）
+        run_hash = self._compute_run_hash(config, start_date, end_date, initial_cash)
+        order_seq = 0
+
         # 4. 预构建 symbol -> {date -> row} 的索引
         symbol_date_index = self._build_symbol_date_index(data)
 
@@ -220,12 +224,14 @@ class BacktestEngine(BacktestEngineABC):
                     order = Order(
                         signal=signal,
                         planned_fill_date=dt,
+                        order_id=self._generate_order_id(run_hash, order_seq),
                         status=OrderStatus.CANCELLED,
                         reject_detail=(
                             f"{signal.symbol}: 期末取消: "
                             f"信号日 {dt} 为最后交易日，无下一交易日可成交"
                         ),
                     )
+                    order_seq += 1
                     orders.append(order)
                     continue
 
@@ -236,6 +242,7 @@ class BacktestEngine(BacktestEngineABC):
                         order = Order(
                             signal=signal,
                             planned_fill_date=next_date,
+                            order_id=self._generate_order_id(run_hash, order_seq),
                             status=OrderStatus.REJECTED,
                             reject_reason=RejectReason.UNIVERSE_FILTERED,
                             reject_detail=(
@@ -243,6 +250,7 @@ class BacktestEngine(BacktestEngineABC):
                                 f"{decision.reason}"
                             ),
                         )
+                        order_seq += 1
                         orders.append(order)
                         logger.debug(
                             "订单 %s 股票池过滤拒绝: %s",
@@ -254,7 +262,9 @@ class BacktestEngine(BacktestEngineABC):
                 order = Order(
                     signal=signal,
                     planned_fill_date=next_date,
+                    order_id=self._generate_order_id(run_hash, order_seq),
                 )
+                order_seq += 1
                 orders.append(order)
                 pending_orders.append(order)
 
@@ -511,17 +521,107 @@ class BacktestEngine(BacktestEngineABC):
         return result
 
     def _compute_hash(self, result: BacktestResult) -> str:
-        """计算结果内容哈希（排除非确定字段）。"""
+        """计算结果内容哈希（覆盖完整确定性结果字段）。
+
+        哈希涵盖：配置摘要、订单流水（含 ID、信号、状态、拒绝原因及详情）、
+        成交流水、每日权益、期末持仓、数据范围、限制声明。
+        排除非确定性运行时间等元数据。
+        """
         try:
-            # 只对确定性内容计算哈希
             hashable = {
                 "config_summary": result.config_summary,
-                "order_count": len(result.orders),
-                "fill_count": len(result.fills),
-                "trading_days": len(result.daily_equity),
-                "final_equity": str(result.daily_equity[-1].total_equity) if result.daily_equity else None,
+                "orders": [
+                    {
+                        "order_id": o.order_id,
+                        "signal_date": o.signal.signal_date.isoformat(),
+                        "symbol": o.signal.symbol,
+                        "side": o.signal.side.value,
+                        "quantity": o.signal.quantity,
+                        "reason": o.signal.reason,
+                        "planned_fill_date": o.planned_fill_date.isoformat(),
+                        "status": o.status.value,
+                        "reject_reason": (
+                            o.reject_reason.value if o.reject_reason else None
+                        ),
+                        "reject_detail": o.reject_detail,
+                    }
+                    for o in result.orders
+                ],
+                "fills": [
+                    {
+                        "order_id": f.order_id,
+                        "fill_date": f.fill_date.isoformat(),
+                        "symbol": f.symbol,
+                        "side": f.side.value,
+                        "quantity": f.quantity,
+                        "raw_open_price": str(f.raw_open_price),
+                        "slippage_price": str(f.slippage_price),
+                        "commission": str(f.commission),
+                        "stamp_duty": str(f.stamp_duty),
+                        "transfer_fee": str(f.transfer_fee),
+                        "total_cost": str(f.total_cost),
+                        "cash_change": str(f.cash_change),
+                    }
+                    for f in result.fills
+                ],
+                "daily_equity": [
+                    {
+                        "snapshot_date": s.snapshot_date.isoformat(),
+                        "cash": str(s.cash),
+                        "position_value": str(s.position_value),
+                        "total_equity": str(s.total_equity),
+                        "daily_pnl": str(s.daily_pnl),
+                        "cumulative_pnl": str(s.cumulative_pnl),
+                        "drawdown": str(s.drawdown),
+                    }
+                    for s in result.daily_equity
+                ],
+                "final_positions": {
+                    sym: {
+                        "symbol": p.symbol,
+                        "total_quantity": p.total_quantity,
+                        "sellable_quantity": p.sellable_quantity,
+                        "frozen_buy_quantity": p.frozen_buy_quantity,
+                        "avg_raw_cost": str(p.avg_raw_cost),
+                    }
+                    for sym, p in result.final_positions.items()
+                },
+                "data_range": result.data_range,
+                "limitations": result.limitations,
             }
             content = json.dumps(hashable, ensure_ascii=False, sort_keys=True, default=str)
             return hashlib.sha256(content.encode("utf-8")).hexdigest()
         except Exception:
             return ""
+
+    @staticmethod
+    def _compute_run_hash(
+        config: BacktestConfig,
+        start_date: date,
+        end_date: date,
+        initial_cash: float,
+    ) -> str:
+        """计算运行指纹（8 位十六进制），用于确定性订单 ID 前缀。
+
+        指纹基于配置摘要、起止日期和初始资金，确保相同输入产生相同前缀。
+        """
+        fingerprint = {
+            "config": config.to_summary(),
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "initial_cash": str(initial_cash),
+        }
+        content = json.dumps(fingerprint, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()[:8]
+
+    @staticmethod
+    def _generate_order_id(run_hash: str, seq: int) -> str:
+        """生成确定性订单 ID。
+
+        格式：``{run_hash}-{seq:04d}``，例如 ``a1b2c3d4-0001``。
+
+        - 同一次回测内 seq 递增，确保唯一
+        - 相同输入重复运行产生相同的 run_hash 和 seq 序列
+        - 两条内容完全相同的重复信号获得不同 seq，但仍稳定
+        """
+        return f"{run_hash}-{seq:04d}"
