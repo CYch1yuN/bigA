@@ -650,7 +650,7 @@ class TestOrderIdUniqueness:
     """订单 ID 唯一性：引擎确定性生成时，100 个订单全部唯一。
 
     Order.order_id 默认为空字符串，由 BacktestEngine 通过
-    _generate_order_id(run_hash, seq) 确定性赋值。
+    _generate_order_id(...) 确定性赋值（含 data_hash、信号内容和序号）。
     """
 
     def test_100_orders_unique_ids_with_explicit_ids(self) -> None:

@@ -347,14 +347,14 @@ class TestNoIdCollision:
         assert len(set(ids)) == len(ids), f"存在 ID 冲突: {ids}"
 
     def test_order_id_format(self):
-        """订单 ID 格式为 {8位hex}-{4位序号}。"""
+        """订单 ID 格式为 16 位十六进制字符串（SHA-256 截断）。"""
         quotes = make_quotes("000001", date(2024, 1, 2), 10, base_price=10.0)
         d = make_trade_dates(date(2024, 1, 2), 10)
         signals = [Signal(d[0], "000001", Side.BUY, 100)]
         result = _run(quotes, signals)
 
         import re
-        pattern = re.compile(r"^[0-9a-f]{8}-\d{4}$")
+        pattern = re.compile(r"^[0-9a-f]{16}$")
         for o in result.orders:
             assert pattern.match(o.order_id), (
                 f"order_id 格式不符: {o.order_id}"

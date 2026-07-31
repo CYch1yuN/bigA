@@ -102,9 +102,10 @@ class BacktestEngine(BacktestEngineABC):
             # 无交易日，生成空结果
             return self._build_empty_result(config, initial_cash, start_date, end_date)
 
-        # 3.1 计算运行指纹（用于确定性订单 ID 生成）
-        run_hash = self._compute_run_hash(config, start_date, end_date, initial_cash)
-        order_seq = 0
+        # 3.1 计算行情数据指纹（用于确定性订单 ID 生成，防止跨回测 ID 碰撞）
+        data_hash = self._compute_data_hash(data)
+        # 3.2 跟踪同内容信号的重复序号（确保重复信号 ID 唯一但稳定）
+        signal_content_counts: dict[str, int] = {}
 
         # 4. 预构建 symbol -> {date -> row} 的索引
         symbol_date_index = self._build_symbol_date_index(data)
@@ -221,17 +222,22 @@ class BacktestEngine(BacktestEngineABC):
             for signal in signals:
                 if next_date is None:
                     # 最后一个交易日，信号无法在下一交易日成交
+                    dup_seq = self._get_duplicate_seq(
+                        signal, dt, signal_content_counts
+                    )
                     order = Order(
                         signal=signal,
                         planned_fill_date=dt,
-                        order_id=self._generate_order_id(run_hash, order_seq),
+                        order_id=self._generate_order_id(
+                            data_hash, config, start_date, end_date,
+                            initial_cash, signal, dt, dup_seq,
+                        ),
                         status=OrderStatus.CANCELLED,
                         reject_detail=(
                             f"{signal.symbol}: 期末取消: "
                             f"信号日 {dt} 为最后交易日，无下一交易日可成交"
                         ),
                     )
-                    order_seq += 1
                     orders.append(order)
                     continue
 
@@ -239,10 +245,16 @@ class BacktestEngine(BacktestEngineABC):
                 if signal.side == Side.BUY:
                     decision = uf.is_eligible(signal.symbol, signal.signal_date, context)
                     if not decision.eligible:
+                        dup_seq = self._get_duplicate_seq(
+                            signal, next_date, signal_content_counts
+                        )
                         order = Order(
                             signal=signal,
                             planned_fill_date=next_date,
-                            order_id=self._generate_order_id(run_hash, order_seq),
+                            order_id=self._generate_order_id(
+                                data_hash, config, start_date, end_date,
+                                initial_cash, signal, next_date, dup_seq,
+                            ),
                             status=OrderStatus.REJECTED,
                             reject_reason=RejectReason.UNIVERSE_FILTERED,
                             reject_detail=(
@@ -250,7 +262,6 @@ class BacktestEngine(BacktestEngineABC):
                                 f"{decision.reason}"
                             ),
                         )
-                        order_seq += 1
                         orders.append(order)
                         logger.debug(
                             "订单 %s 股票池过滤拒绝: %s",
@@ -259,12 +270,17 @@ class BacktestEngine(BacktestEngineABC):
                         continue
 
                 # 6e-2. 通过过滤的信号转为挂单
+                dup_seq = self._get_duplicate_seq(
+                    signal, next_date, signal_content_counts
+                )
                 order = Order(
                     signal=signal,
                     planned_fill_date=next_date,
-                    order_id=self._generate_order_id(run_hash, order_seq),
+                    order_id=self._generate_order_id(
+                        data_hash, config, start_date, end_date,
+                        initial_cash, signal, next_date, dup_seq,
+                    ),
                 )
-                order_seq += 1
                 orders.append(order)
                 pending_orders.append(order)
 
@@ -518,6 +534,7 @@ class BacktestEngine(BacktestEngineABC):
         )
         metrics = self._metrics_calc.calculate(result, cash)
         result.metrics = metrics
+        result.content_hash = self._compute_hash(result)
         return result
 
     def _compute_hash(self, result: BacktestResult) -> str:
@@ -526,102 +543,160 @@ class BacktestEngine(BacktestEngineABC):
         哈希涵盖：配置摘要、订单流水（含 ID、信号、状态、拒绝原因及详情）、
         成交流水、每日权益、期末持仓、数据范围、限制声明。
         排除非确定性运行时间等元数据。
+
+        异常不被静默吞没 —— 哈希生成失败必须让任务明确失败。
         """
-        try:
-            hashable = {
-                "config_summary": result.config_summary,
-                "orders": [
-                    {
-                        "order_id": o.order_id,
-                        "signal_date": o.signal.signal_date.isoformat(),
-                        "symbol": o.signal.symbol,
-                        "side": o.signal.side.value,
-                        "quantity": o.signal.quantity,
-                        "reason": o.signal.reason,
-                        "planned_fill_date": o.planned_fill_date.isoformat(),
-                        "status": o.status.value,
-                        "reject_reason": (
-                            o.reject_reason.value if o.reject_reason else None
-                        ),
-                        "reject_detail": o.reject_detail,
-                    }
-                    for o in result.orders
-                ],
-                "fills": [
-                    {
-                        "order_id": f.order_id,
-                        "fill_date": f.fill_date.isoformat(),
-                        "symbol": f.symbol,
-                        "side": f.side.value,
-                        "quantity": f.quantity,
-                        "raw_open_price": str(f.raw_open_price),
-                        "slippage_price": str(f.slippage_price),
-                        "commission": str(f.commission),
-                        "stamp_duty": str(f.stamp_duty),
-                        "transfer_fee": str(f.transfer_fee),
-                        "total_cost": str(f.total_cost),
-                        "cash_change": str(f.cash_change),
-                    }
-                    for f in result.fills
-                ],
-                "daily_equity": [
-                    {
-                        "snapshot_date": s.snapshot_date.isoformat(),
-                        "cash": str(s.cash),
-                        "position_value": str(s.position_value),
-                        "total_equity": str(s.total_equity),
-                        "daily_pnl": str(s.daily_pnl),
-                        "cumulative_pnl": str(s.cumulative_pnl),
-                        "drawdown": str(s.drawdown),
-                    }
-                    for s in result.daily_equity
-                ],
-                "final_positions": {
-                    sym: {
-                        "symbol": p.symbol,
-                        "total_quantity": p.total_quantity,
-                        "sellable_quantity": p.sellable_quantity,
-                        "frozen_buy_quantity": p.frozen_buy_quantity,
-                        "avg_raw_cost": str(p.avg_raw_cost),
-                    }
-                    for sym, p in result.final_positions.items()
-                },
-                "data_range": result.data_range,
-                "limitations": result.limitations,
-            }
-            content = json.dumps(hashable, ensure_ascii=False, sort_keys=True, default=str)
-            return hashlib.sha256(content.encode("utf-8")).hexdigest()
-        except Exception:
-            return ""
+        hashable = {
+            "config_summary": result.config_summary,
+            "orders": [
+                {
+                    "order_id": o.order_id,
+                    "signal_date": o.signal.signal_date.isoformat(),
+                    "symbol": o.signal.symbol,
+                    "side": o.signal.side.value,
+                    "quantity": o.signal.quantity,
+                    "reason": o.signal.reason,
+                    "planned_fill_date": o.planned_fill_date.isoformat(),
+                    "status": o.status.value,
+                    "reject_reason": (
+                        o.reject_reason.value if o.reject_reason else None
+                    ),
+                    "reject_detail": o.reject_detail,
+                }
+                for o in result.orders
+            ],
+            "fills": [
+                {
+                    "order_id": f.order_id,
+                    "fill_date": f.fill_date.isoformat(),
+                    "symbol": f.symbol,
+                    "side": f.side.value,
+                    "quantity": f.quantity,
+                    "raw_open_price": str(f.raw_open_price),
+                    "slippage_price": str(f.slippage_price),
+                    "commission": str(f.commission),
+                    "stamp_duty": str(f.stamp_duty),
+                    "transfer_fee": str(f.transfer_fee),
+                    "total_cost": str(f.total_cost),
+                    "cash_change": str(f.cash_change),
+                }
+                for f in result.fills
+            ],
+            "daily_equity": [
+                {
+                    "snapshot_date": s.snapshot_date.isoformat(),
+                    "cash": str(s.cash),
+                    "position_value": str(s.position_value),
+                    "total_equity": str(s.total_equity),
+                    "daily_pnl": str(s.daily_pnl),
+                    "cumulative_pnl": str(s.cumulative_pnl),
+                    "drawdown": str(s.drawdown),
+                }
+                for s in result.daily_equity
+            ],
+            "final_positions": {
+                sym: {
+                    "symbol": p.symbol,
+                    "total_quantity": p.total_quantity,
+                    "sellable_quantity": p.sellable_quantity,
+                    "frozen_buy_quantity": p.frozen_buy_quantity,
+                    "avg_raw_cost": str(p.avg_raw_cost),
+                }
+                for sym, p in result.final_positions.items()
+            },
+            "data_range": result.data_range,
+            "limitations": result.limitations,
+        }
+        content = json.dumps(hashable, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def _compute_run_hash(
+    def _compute_data_hash(data: pd.DataFrame) -> str:
+        """计算行情数据的稳定内容哈希。
+
+        基于数据内容（价格、量额、状态等）生成 SHA-256，
+        确保不同行情数据产生不同的哈希值，防止跨回测 ID 碰撞。
+        """
+        if data.empty:
+            return hashlib.sha256(b"empty_data").hexdigest()
+
+        # 稳定排序
+        sorted_data = data.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+
+        # 选取定义数据内容的关键列
+        cols = [
+            "symbol", "trade_date",
+            "open_raw", "high_raw", "low_raw", "close_raw",
+            "volume", "amount",
+            "open_qfq", "high_qfq", "low_qfq", "close_qfq",
+            "adjustment_factor",
+            "is_suspended", "is_tradable",
+        ]
+        available_cols = [c for c in cols if c in sorted_data.columns]
+
+        # 转为 records 并序列化（sort_keys 确保字段顺序稳定）
+        records = sorted_data[available_cols].to_dict("records")
+        content = json.dumps(records, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _get_duplicate_seq(
+        signal: Signal,
+        planned_fill_date: date,
+        counts: dict[str, int],
+    ) -> int:
+        """获取同内容信号的确定性重复序号。
+
+        两条完全相同的信号获得不同序号（0, 1, 2, ...），
+        但相同输入重复运行产生相同序号。
+        """
+        key = (
+            f"{signal.signal_date.isoformat()}|"
+            f"{signal.symbol}|"
+            f"{signal.side.value}|"
+            f"{signal.quantity}|"
+            f"{signal.reason}|"
+            f"{planned_fill_date.isoformat()}"
+        )
+        seq = counts.get(key, 0)
+        counts[key] = seq + 1
+        return seq
+
+    @staticmethod
+    def _generate_order_id(
+        data_hash: str,
         config: BacktestConfig,
         start_date: date,
         end_date: date,
         initial_cash: float,
+        signal: Signal,
+        planned_fill_date: date,
+        duplicate_sequence: int,
     ) -> str:
-        """计算运行指纹（8 位十六进制），用于确定性订单 ID 前缀。
+        """生成确定性订单 ID（包含运行指纹+订单内容+序号）。
 
-        指纹基于配置摘要、起止日期和初始资金，确保相同输入产生相同前缀。
+        使用 SHA-256 生成稳定 ID，禁止使用 Python hash()、时间或随机数。
+
+        payload 涵盖：
+        - 运行级指纹：data_hash、config、start_date、end_date、initial_cash
+        - 订单内容：signal_date、symbol、side、quantity、reason、planned_fill_date
+        - 确定性序号：duplicate_sequence（同内容信号递增）
+
+        返回 16 位十六进制字符串（SHA-256 截断）。
         """
-        fingerprint = {
+        payload = {
+            "data_hash": data_hash,
             "config": config.to_summary(),
             "start_date": str(start_date),
             "end_date": str(end_date),
             "initial_cash": str(initial_cash),
+            "signal_date": signal.signal_date.isoformat(),
+            "symbol": signal.symbol,
+            "side": signal.side.value,
+            "quantity": signal.quantity,
+            "reason": signal.reason,
+            "planned_fill_date": planned_fill_date.isoformat(),
+            "duplicate_sequence": duplicate_sequence,
         }
-        content = json.dumps(fingerprint, ensure_ascii=False, sort_keys=True, default=str)
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()[:8]
-
-    @staticmethod
-    def _generate_order_id(run_hash: str, seq: int) -> str:
-        """生成确定性订单 ID。
-
-        格式：``{run_hash}-{seq:04d}``，例如 ``a1b2c3d4-0001``。
-
-        - 同一次回测内 seq 递增，确保唯一
-        - 相同输入重复运行产生相同的 run_hash 和 seq 序列
-        - 两条内容完全相同的重复信号获得不同 seq，但仍稳定
-        """
-        return f"{run_hash}-{seq:04d}"
+        content = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
