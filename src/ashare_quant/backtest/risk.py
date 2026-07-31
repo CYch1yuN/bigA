@@ -19,10 +19,9 @@
 当 ``bar is None`` 时仅执行 1、2、9 三项；3-8、10 均依赖行情数据。
 
 注意：
-- 第 5 项现金检查为「估算」：成交额按 ``bar.open_raw`` 估算（不含滑点），
-  佣金按 ``commission.rate`` 估算并应用 ``minimum``。实际撮合由
-  :class:`~ashare_quant.backtest.broker.AShareBrokerSimulator` 应用滑点与全部费用，
-  两者在大多数情景下一致；本估算是按任务规约的简化口径。
+- 第 5 项现金检查使用与 ``BrokerSimulator.execute`` 完全一致的统一成本计算函数
+  :func:`~ashare_quant.backtest.cost.compute_buy_cost`，包含滑点后价格、
+  最低佣金和过户费，确保风控预检与实际成交不会漂移。
 - 涨跌停价计算（板块比例选择、按 tick 取整）镜像 ``broker.py`` 的实现，确保
   风控预检与成交撮合对涨跌停的判定完全一致，避免出现「风控拒绝但撮合本可成交」
   的假拒绝（例如科创板 20% 涨跌停被误按主板 10% 判定）。
@@ -33,6 +32,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import Optional
 
 from .config import BacktestConfig
+from .cost import compute_buy_cost, compute_sell_cost
 from .interfaces import RiskManager
 from .models import (
     BarData,
@@ -42,6 +42,7 @@ from .models import (
     RiskDecision,
     Side,
     Signal,
+    quantize_money,
     quantize_price,
     to_decimal,
 )
@@ -238,15 +239,14 @@ class DefaultRiskManager(RiskManager):
         portfolio: PortfolioSnapshot,
         config: BacktestConfig,
     ) -> Optional[RiskDecision]:
-        """5. 买入现金充足性：成交额(按 open_raw 估算) + 佣金(应用最低值)。"""
-        price = to_decimal(bar.open_raw)
-        turnover = to_decimal(signal.quantity) * price
-        commission_rate = to_decimal(config.commission.rate)
-        commission_min = to_decimal(config.commission.minimum)
-        estimated_commission = turnover * commission_rate
-        if estimated_commission < commission_min:
-            estimated_commission = commission_min
-        required_cash = turnover + estimated_commission
+        """5. 买入现金充足性：使用与 Broker 完全一致的成本计算。
+
+        调用统一函数 ``compute_buy_cost`` 计算滑点后价格、成交额、佣金、
+        过户费等全部费用，确保风控预检与实际成交不会漂移。
+        """
+        open_raw = to_decimal(bar.open_raw)
+        cost = compute_buy_cost(open_raw, signal.quantity, config)
+        required_cash = cost.turnover + cost.total_cost
         cash = to_decimal(portfolio.cash)
         if cash < required_cash:
             return RiskDecision(

@@ -135,6 +135,7 @@ class BacktestEngine(BacktestEngineABC):
                 if not risk_decision.approved:
                     order.status = OrderStatus.REJECTED
                     order.reject_reason = risk_decision.reject_reason
+                    order.reject_detail = risk_decision.reason
                     logger.debug(
                         "订单 %s 风控拒绝: %s (%s)",
                         order.order_id, risk_decision.reject_reason, risk_decision.reason,
@@ -148,6 +149,7 @@ class BacktestEngine(BacktestEngineABC):
                 if rejection is not None:
                     order.status = OrderStatus.REJECTED
                     order.reject_reason = rejection.reject_reason
+                    order.reject_detail = rejection.reason
                     logger.debug(
                         "订单 %s 被拒绝: %s (%s)",
                         order.order_id, rejection.reject_reason, rejection.reason,
@@ -168,8 +170,12 @@ class BacktestEngine(BacktestEngineABC):
                     self._update_position(positions, fill)
                 else:
                     order.status = OrderStatus.REJECTED
-                    order.reject_reason = None
-                    logger.warning("订单 %s execute 返回 None 但未拒绝", order.order_id)
+                    order.reject_reason = RejectReason.INSUFFICIENT_CASH
+                    order.reject_detail = (
+                        f"{order.signal.symbol}: Broker 最终现金保护拒单: "
+                        f"实际成交成本超过可用现金"
+                    )
+                    logger.warning("订单 %s execute 返回 None（现金保护拒单）", order.order_id)
 
             pending_orders = still_pending
 
@@ -214,6 +220,10 @@ class BacktestEngine(BacktestEngineABC):
                         signal=signal,
                         planned_fill_date=dt,
                         status=OrderStatus.CANCELLED,
+                        reject_detail=(
+                            f"{signal.symbol}: 期末取消: "
+                            f"信号日 {dt} 为最后交易日，无下一交易日可成交"
+                        ),
                     )
                     orders.append(order)
                 else:
@@ -228,6 +238,10 @@ class BacktestEngine(BacktestEngineABC):
         for order in pending_orders:
             if order.status == OrderStatus.PENDING:
                 order.status = OrderStatus.CANCELLED
+                order.reject_detail = (
+                    f"{order.signal.symbol}: 期末取消: "
+                    f"计划成交日 {order.planned_fill_date} 超出回测区间"
+                )
 
         # --- 8. 计算指标 ---
         result = BacktestResult(

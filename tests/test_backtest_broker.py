@@ -340,7 +340,7 @@ class TestExecute:
         # BUY 100 @ open_raw=10.0, bps=10, tick=0.01
         bar = build_bar(open_price=10.0, prev_close_raw=10.0)
         order = build_order(side=Side.BUY, quantity=100)
-        fill = broker.execute(order, bar, build_portfolio(), config, {})
+        fill = broker.execute(order, bar, build_portfolio(cash=Decimal("10000")), config, {})
 
         assert fill is not None
         assert fill.side is Side.BUY
@@ -402,7 +402,7 @@ class TestExecute:
 
         # BUY：现金变化 = -成交额
         buy_fill = broker.execute(
-            build_order(side=Side.BUY, quantity=100), bar, build_portfolio(), zero_config, {}
+            build_order(side=Side.BUY, quantity=100), bar, build_portfolio(cash=Decimal("10000")), zero_config, {}
         )
         assert buy_fill is not None
         assert buy_fill.commission == Decimal("0.00")
@@ -429,7 +429,7 @@ class TestExecute:
         # 买入滑点向不利方向：滑点价 > 原始开盘价
         bar = build_bar(open_price=10.0, prev_close_raw=10.0)
         fill = broker.execute(
-            build_order(side=Side.BUY, quantity=100), bar, build_portfolio(), config, {}
+            build_order(side=Side.BUY, quantity=100), bar, build_portfolio(cash=Decimal("10000")), config, {}
         )
         assert fill is not None
         assert fill.slippage_price > fill.raw_open_price
@@ -448,7 +448,7 @@ class TestExecute:
         # 10000 股 @ 10.0 -> 成交额 ~100100，佣金 = 100100*0.0003 = 30.03 > 5.00
         bar = build_bar(open_price=10.0, prev_close_raw=10.0)
         fill = broker.execute(
-            build_order(side=Side.BUY, quantity=10000), bar, build_portfolio(), config, {}
+            build_order(side=Side.BUY, quantity=10000), bar, build_portfolio(cash=Decimal("200000")), config, {}
         )
         assert fill is not None
         assert fill.turnover == Decimal("100100.00")
@@ -458,7 +458,7 @@ class TestExecute:
         # 1000 股 @ 10.0 -> 成交额 ~10010，佣金 = 10010*0.0003 = 3.003 < 5.00 -> 取最低 5.00
         bar = build_bar(open_price=10.0, prev_close_raw=10.0)
         fill = broker.execute(
-            build_order(side=Side.BUY, quantity=1000), bar, build_portfolio(), config, {}
+            build_order(side=Side.BUY, quantity=1000), bar, build_portfolio(cash=Decimal("50000")), config, {}
         )
         assert fill is not None
         assert fill.turnover == Decimal("10010.00")

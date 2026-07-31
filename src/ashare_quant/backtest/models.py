@@ -86,6 +86,7 @@ class Order:
     order_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     status: OrderStatus = OrderStatus.PENDING
     reject_reason: Optional[RejectReason] = None
+    reject_detail: Optional[str] = None
     fill: Optional[Fill] = None
 
 

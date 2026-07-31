@@ -29,6 +29,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import Optional
 
 from .config import BacktestConfig
+from .cost import compute_buy_cost, compute_sell_cost
 from .interfaces import BrokerSimulator
 from .models import (
     BarData,
@@ -199,14 +200,9 @@ class AShareBrokerSimulator(BrokerSimulator):
 
         步骤：
             1. 调用 ``check_rejection``，若被拒绝返回 ``None``。
-            2. 计算滑点后价格（向不利方向按 tick 取整）。
-            3. 成交额 = 滑点后价格 × 数量。
-            4. 佣金 = max(成交额 × rate, minimum)。
-            5. 印花税：买入 0，卖出 = 成交额 × rate。
-            6. 过户费 = 成交额 × rate（双向）。
-            7. 总费用 = 佣金 + 印花税 + 过户费。
-            8. 现金变化：买入 = -(成交额 + 总费用)，卖出 = 成交额 - 总费用。
-            9. 金额用 ``Decimal``，价格 ``quantize_price``(4 位)，金额 ``quantize_money``(2 位)。
+            2. 使用统一成本函数计算滑点后价格、成交额、佣金、印花税、过户费、总费用、现金变化。
+            3. 最终现金保护：如果真实 cash_change 会使现金 < 0，拒绝成交。
+            4. 构造成交记录。
 
         Args:
             order: 待执行订单。
@@ -227,55 +223,27 @@ class AShareBrokerSimulator(BrokerSimulator):
         side = order.signal.side
         quantity = order.signal.quantity
 
-        # 2. 滑点后价格（向不利方向取整到 tick）
+        # 2. 统一成本计算（与风控预检共用同一函数）
         open_raw = to_decimal(bar.open_raw)
-        bps = config.slippage.bps
-        slip_tick = config.slippage.tick_size
-        bps_factor = to_decimal(bps) / Decimal("10000")
-
         if side == Side.BUY:
-            slip_raw = open_raw * (Decimal("1") + bps_factor)
-            slippage_price = self._round_up_to_tick(slip_raw, slip_tick)
+            cost = compute_buy_cost(open_raw, quantity, config)
         else:
-            slip_raw = open_raw * (Decimal("1") - bps_factor)
-            slippage_price = self._round_down_to_tick(slip_raw, slip_tick)
+            cost = compute_sell_cost(open_raw, quantity, config)
+
+        # 3. 最终现金保护：买入时如果现金不足则拒单
+        if side == Side.BUY:
+            cash = to_decimal(portfolio.cash)
+            required = cost.turnover + cost.total_cost
+            if cash < required:
+                logger.warning(
+                    "%s: Broker 最终现金保护拒单: 需要 %.2f, 现金 %.2f",
+                    symbol, required, cash,
+                )
+                return None
 
         raw_open_price = quantize_price(open_raw)
-        slippage_price = quantize_price(slippage_price)
 
-        # 3. 成交额
-        turnover = slippage_price * Decimal(quantity)
-
-        # 4. 佣金 = max(成交额 * rate, minimum)，费率允许为 0
-        commission_rate = to_decimal(config.commission.rate)
-        commission_min = to_decimal(config.commission.minimum)
-        commission = turnover * commission_rate
-        if commission < commission_min:
-            commission = commission_min
-        commission = quantize_money(commission)
-
-        # 5. 印花税：买入 0，卖出 = 成交额 * rate
-        if side == Side.SELL:
-            stamp_duty = turnover * to_decimal(config.stamp_duty.rate)
-        else:
-            stamp_duty = Decimal("0")
-        stamp_duty = quantize_money(stamp_duty)
-
-        # 6. 过户费 = 成交额 * rate（双向）
-        transfer_fee = turnover * to_decimal(config.transfer_fee.rate)
-        transfer_fee = quantize_money(transfer_fee)
-
-        # 7. 总费用
-        total_cost = quantize_money(commission + stamp_duty + transfer_fee)
-
-        # 8. 现金变化
-        if side == Side.BUY:
-            cash_change = -(turnover + total_cost)
-        else:
-            cash_change = turnover - total_cost
-        cash_change = quantize_money(cash_change)
-
-        # 9. 构造成交记录
+        # 4. 构造成交记录
         return Fill(
             order_id=order.order_id,
             fill_date=bar.trade_date,
@@ -283,12 +251,12 @@ class AShareBrokerSimulator(BrokerSimulator):
             side=side,
             quantity=quantity,
             raw_open_price=raw_open_price,
-            slippage_price=slippage_price,
-            commission=commission,
-            stamp_duty=stamp_duty,
-            transfer_fee=transfer_fee,
-            total_cost=total_cost,
-            cash_change=cash_change,
+            slippage_price=cost.slippage_price,
+            commission=cost.commission,
+            stamp_duty=cost.stamp_duty,
+            transfer_fee=cost.transfer_fee,
+            total_cost=cost.total_cost,
+            cash_change=cost.cash_change,
         )
 
     # ------------------------------------------------------------------ #

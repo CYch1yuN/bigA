@@ -218,8 +218,34 @@ class ReportGenerator:
             lines.append("无成交流水。")
         lines.append("")
 
-        # 六、限制声明
-        lines.append("## 六、限制声明")
+        # 六、订单拒绝明细
+        rejected_or_cancelled = [
+            o for o in result.orders
+            if o.status in (OrderStatus.REJECTED, OrderStatus.CANCELLED)
+        ]
+        lines.append("## 六、订单拒绝/取消明细")
+        lines.append("")
+        if rejected_or_cancelled:
+            lines.append(
+                "| 订单ID | 代码 | 方向 | 数量 | 状态 | 拒绝原因 | 拒绝详情 |"
+            )
+            lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+            for o in rejected_or_cancelled:
+                lines.append(
+                    f"| {o.order_id} "
+                    f"| {o.signal.symbol} "
+                    f"| {self._enum_value(o.signal.side)} "
+                    f"| {o.signal.quantity} "
+                    f"| {self._enum_value(o.status)} "
+                    f"| {self._enum_value(o.reject_reason) or '-'} "
+                    f"| {o.reject_detail or '-'} |"
+                )
+        else:
+            lines.append("无拒绝/取消订单。")
+        lines.append("")
+
+        # 七、限制声明
+        lines.append("## 七、限制声明")
         lines.append("")
         for item in self._merge_limitations(result.limitations):
             lines.append(f"- {item}")
@@ -245,6 +271,7 @@ class ReportGenerator:
             "planned_fill_date",
             "status",
             "reject_reason",
+            "reject_detail",
             "filled",
         ]
         rows: list[dict[str, Any]] = []
@@ -265,6 +292,7 @@ class ReportGenerator:
                         if o.reject_reason is not None
                         else None
                     ),
+                    "reject_detail": o.reject_detail,
                     "filled": o.fill is not None,
                 }
             )
@@ -389,6 +417,7 @@ class ReportGenerator:
                 if order.reject_reason is not None
                 else None
             ),
+            "reject_detail": order.reject_detail,
             "fill": (
                 ReportGenerator._fill_to_dict(order.fill)
                 if order.fill is not None
