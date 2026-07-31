@@ -457,6 +457,10 @@ def cmd_research(args: argparse.Namespace) -> int:
         pd.to_datetime(quotes["trade_date"]).dt.date.unique().tolist()
     )
 
+    # 提取参数候选集合（配置未指定时为 None，使用代码默认值）
+    steady_candidates = research_cfg.get("steady")
+    aggressive_candidates = research_cfg.get("aggressive")
+
     # 运行研究
     runner = ResearchRunner(
         bt_config=bt_config,
@@ -464,6 +468,8 @@ def cmd_research(args: argparse.Namespace) -> int:
         universe_filter=universe_filter,
         walk_forward_config=walk_forward_config,
         monte_carlo_config=monte_carlo_config,
+        steady_candidates=steady_candidates,
+        aggressive_candidates=aggressive_candidates,
     )
     result = runner.run(quotes, trading_dates, initial_cash)
 

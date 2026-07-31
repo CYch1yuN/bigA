@@ -766,13 +766,21 @@ class AggressiveStrategy(Strategy):
         return max(0, lots * self._lot_size)
 
 
-def generate_steady_param_combinations() -> list[SteadyParams]:
-    """生成稳健轨全部参数候选组合。"""
+def generate_steady_param_combinations(
+    candidates: Optional[dict[str, list]] = None,
+) -> list[SteadyParams]:
+    """生成稳健轨全部参数候选组合。
+
+    Args:
+        candidates: 可选的候选参数字典。为 None 时使用默认
+            :data:`STEADY_PARAM_CANDIDATES`。
+    """
+    cands = candidates or STEADY_PARAM_CANDIDATES
     combos: list[SteadyParams] = []
-    for tw in STEADY_PARAM_CANDIDATES["trend_window"]:
-        for mw in STEADY_PARAM_CANDIDATES["momentum_window"]:
-            for vw in STEADY_PARAM_CANDIDATES["volatility_window"]:
-                for ms in STEADY_PARAM_CANDIDATES["minimum_score"]:
+    for tw in cands["trend_window"]:
+        for mw in cands["momentum_window"]:
+            for vw in cands["volatility_window"]:
+                for ms in cands["minimum_score"]:
                     combos.append(SteadyParams(
                         trend_window=tw,
                         momentum_window=mw,
@@ -782,15 +790,23 @@ def generate_steady_param_combinations() -> list[SteadyParams]:
     return combos
 
 
-def generate_aggressive_param_combinations() -> list[AggressiveParams]:
-    """生成激进轨全部参数候选组合。"""
+def generate_aggressive_param_combinations(
+    candidates: Optional[dict[str, list]] = None,
+) -> list[AggressiveParams]:
+    """生成激进轨全部参数候选组合。
+
+    Args:
+        candidates: 可选的候选参数字典。为 None 时使用默认
+            :data:`AGGRESSIVE_PARAM_CANDIDATES`。
+    """
+    cands = candidates or AGGRESSIVE_PARAM_CANDIDATES
     combos: list[AggressiveParams] = []
-    for bw in AGGRESSIVE_PARAM_CANDIDATES["breakout_window"]:
-        for vw in AGGRESSIVE_PARAM_CANDIDATES["volume_window"]:
-            for vr in AGGRESSIVE_PARAM_CANDIDATES["volume_ratio"]:
-                for rsw in AGGRESSIVE_PARAM_CANDIDATES["relative_strength_window"]:
-                    for elw in AGGRESSIVE_PARAM_CANDIDATES["exit_low_window"]:
-                        for mhd in AGGRESSIVE_PARAM_CANDIDATES["max_holding_days"]:
+    for bw in cands["breakout_window"]:
+        for vw in cands["volume_window"]:
+            for vr in cands["volume_ratio"]:
+                for rsw in cands["relative_strength_window"]:
+                    for elw in cands["exit_low_window"]:
+                        for mhd in cands["max_holding_days"]:
                             combos.append(AggressiveParams(
                                 breakout_window=bw,
                                 volume_window=vw,

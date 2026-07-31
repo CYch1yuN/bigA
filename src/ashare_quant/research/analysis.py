@@ -726,12 +726,16 @@ class ResearchRunner:
         universe_filter: HistoricalUniverseFilter,
         walk_forward_config: Optional[WalkForwardConfig] = None,
         monte_carlo_config: Optional[MonteCarloConfig] = None,
+        steady_candidates: Optional[dict[str, list]] = None,
+        aggressive_candidates: Optional[dict[str, list]] = None,
     ) -> None:
         self._bt_config = bt_config
         self._benchmark = benchmark
         self._universe_filter = universe_filter
         self._wf_config = walk_forward_config or WalkForwardConfig()
         self._mc_config = monte_carlo_config or MonteCarloConfig()
+        self._steady_candidates = steady_candidates
+        self._aggressive_candidates = aggressive_candidates
         self._engine = BacktestEngine()
         self._calc = MetricsCalculator()
 
@@ -1010,7 +1014,7 @@ class ResearchRunner:
         all_results: list[dict[str, Any]] = []
 
         if track_type == TrackType.STEADY:
-            candidates = generate_steady_param_combinations()
+            candidates = generate_steady_param_combinations(self._steady_candidates)
             baseline_key = _steady_param_key(STEADY_BASELINE_PARAMS)
             for params in candidates:
                 param_key = _steady_param_key(params)
@@ -1047,7 +1051,7 @@ class ResearchRunner:
                         "turnover_rate": 0.0,
                     })
         else:
-            candidates = generate_aggressive_param_combinations()
+            candidates = generate_aggressive_param_combinations(self._aggressive_candidates)
             baseline_key = _aggressive_param_key(AGGRESSIVE_BASELINE_PARAMS)
             for params in candidates:
                 param_key = _aggressive_param_key(params)
@@ -1161,7 +1165,7 @@ class ResearchRunner:
         if not val_dates:
             return STEADY_BASELINE_PARAMS, "验证期无交易日，使用基线", []
 
-        candidates = generate_steady_param_combinations()
+        candidates = generate_steady_param_combinations(self._steady_candidates)
         val_results: list[tuple[SteadyParams, BacktestResult]] = []
 
         for params in candidates:
@@ -1199,7 +1203,7 @@ class ResearchRunner:
         if not val_dates:
             return AGGRESSIVE_BASELINE_PARAMS, "验证期无交易日，使用基线", []
 
-        candidates = generate_aggressive_param_combinations()
+        candidates = generate_aggressive_param_combinations(self._aggressive_candidates)
         val_results: list[tuple[AggressiveParams, BacktestResult]] = []
 
         hs300_dict = dict(self._benchmark.hs300_close)
