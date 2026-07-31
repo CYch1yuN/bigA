@@ -29,6 +29,7 @@ data/
 !tests/data/*.parquet
 !tests/data/*.csv
 !reports/phase-2/*.parquet
+!reports/phase-3/*.parquet
 
 # --- 日志与生成产物 ---
 logs/
