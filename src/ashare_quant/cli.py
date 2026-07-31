@@ -14,6 +14,7 @@ import argparse
 import shutil
 import sys
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -257,10 +258,117 @@ def cmd_run_example(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    """运行回测（Phase 2）。
+
+    读取 curated 日行情、配置和信号，运行事件驱动回测，
+    输出 JSON 结果、Markdown 报告、订单/成交/权益 Parquet。
+    """
+    import json as json_mod
+
+    from .backtest.config import BacktestConfig, load_backtest_config, default_backtest_config_path
+    from .backtest.engine import BacktestEngine
+    from .backtest.strategies import ScriptedStrategy, NoOpStrategy
+    from .backtest.report import ReportGenerator
+
+    # 加载配置
+    if args.config:
+        bt_config = load_backtest_config(args.config)
+    else:
+        bt_config = load_backtest_config(default_backtest_config_path())
+
+    # 加载行情数据
+    quotes = pd.read_parquet(args.quotes)
+
+    # 加载策略
+    if args.strategy == "scripted":
+        if not args.signals:
+            print("错误: scripted 策略需要 --signals 参数", file=sys.stderr)
+            return 1
+        strategy = ScriptedStrategy.from_json(args.signals)
+    elif args.strategy == "noop":
+        strategy = NoOpStrategy()
+    else:
+        print(f"错误: 未知策略 {args.strategy}", file=sys.stderr)
+        return 1
+
+    # 确定回测区间
+    start = date.fromisoformat(args.start) if args.start else quotes["trade_date"].min()
+    end = date.fromisoformat(args.end) if args.end else quotes["trade_date"].max()
+    if not isinstance(start, date):
+        start = pd.Timestamp(start).date()
+    if not isinstance(end, date):
+        end = pd.Timestamp(end).date()
+
+    # 运行回测
+    engine = BacktestEngine()
+    result = engine.run(
+        data=quotes,
+        strategy=strategy,
+        start_date=start,
+        end_date=end,
+        initial_cash=bt_config.initial_cash,
+        config=bt_config,
+    )
+
+    # 设置代码提交号（运行元数据，不参与 content_hash）
+    result.code_commit = get_code_commit()
+
+    # 验证账务恒等式
+    for snap in result.daily_equity:
+        expected = snap.cash + snap.position_value
+        if abs(expected - snap.total_equity) > Decimal("0.01"):
+            print(
+                f"错误: 账务不平等 {snap.snapshot_date}: "
+                f"现金({snap.cash}) + 持仓({snap.position_value}) != 权益({snap.total_equity})",
+                file=sys.stderr,
+            )
+            return 1
+
+    # 生成报告
+    report_gen = ReportGenerator()
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # JSON 结果
+    json_result = report_gen.generate_json(result, Decimal(str(bt_config.initial_cash)))
+    json_path = output_dir / "backtest-result.json"
+    with json_path.open("w", encoding="utf-8") as f:
+        json_mod.dump(json_result, f, ensure_ascii=False, indent=2, default=str)
+
+    # Markdown 报告
+    md_report = report_gen.generate_markdown(result, Decimal(str(bt_config.initial_cash)))
+    md_path = output_dir / "backtest-report.md"
+    md_path.write_text(md_report, encoding="utf-8")
+
+    # Parquet 文件
+    orders_df = report_gen.generate_orders_dataframe(result)
+    orders_df.to_parquet(output_dir / "orders.parquet", index=False)
+
+    fills_df = report_gen.generate_fills_dataframe(result)
+    fills_df.to_parquet(output_dir / "fills.parquet", index=False)
+
+    equity_df = report_gen.generate_equity_dataframe(result)
+    equity_df.to_parquet(output_dir / "equity.parquet", index=False)
+
+    # 输出摘要
+    m = result.metrics
+    print(f"回测完成。报告目录: {output_dir}")
+    print(f"  交易日: {m.get('trading_days', len(result.daily_equity))}")
+    print(f"  初始权益: {m.get('initial_equity')}")
+    print(f"  最终权益: {m.get('final_equity')}")
+    print(f"  总收益率: {m.get('total_return')}")
+    print(f"  最大回撤: {m.get('max_drawdown')}")
+    print(f"  交易次数: {m.get('total_trades')}")
+    print(f"  订单数: {len(result.orders)}")
+    print(f"  成交数: {len(result.fills)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ashare-quant",
-        description=f"A 股双轨量化研究系统 - Phase 1 数据层 v{__version__}",
+        description=f"A 股双轨量化研究系统 v{__version__}",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -315,6 +423,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_ex.add_argument("--reports-dir", help="报告输出目录")
     p_ex.add_argument("--data-dir", help="示例数据目录")
     p_ex.set_defaults(func=cmd_run_example)
+
+    p_bt = sub.add_parser("backtest", help="运行回测（Phase 2）")
+    p_bt.add_argument("--quotes", required=True, help="curated 日行情 Parquet 路径")
+    p_bt.add_argument("--config", help="回测配置 YAML 路径")
+    p_bt.add_argument("--strategy", default="scripted", help="策略类型 (scripted/noop)")
+    p_bt.add_argument("--signals", help="信号 JSON 文件路径（scripted 策略必需）")
+    p_bt.add_argument("--start", help="回测起始日 YYYY-MM-DD")
+    p_bt.add_argument("--end", help="回测结束日 YYYY-MM-DD")
+    p_bt.add_argument("--output", default="reports/phase-2", help="报告输出目录")
+    p_bt.set_defaults(func=cmd_backtest)
 
     return p
 

@@ -1,0 +1,46 @@
+# Phase 2 回测器默认配置
+# 所有费率、阈值集中于此，禁止在代码中硬编码。
+
+# 初始资金（元）
+initial_cash: 1000.0
+
+# 最小交易单位（股）
+lot_size: 100
+
+# 佣金配置（买卖双向收取）
+commission:
+  rate: 0.0003        # 万三
+  minimum: 5.0         # 最低佣金5元
+
+# 印花税配置（仅卖出收取）
+stamp_duty:
+  rate: 0.001          # 千一
+
+# 过户费配置（双向收取）
+transfer_fee:
+  rate: 0.00001        # 万零点一
+
+# 滑点配置
+slippage:
+  bps: 10.0            # 10bps = 0.1%
+  tick_size: 0.01      # 0.01元
+
+# 涨跌停配置
+limit:
+  # 板块涨跌停比例
+  main_ratio: 0.10     # 主板 10%
+  star_ratio: 0.20     # 科创板 20%
+  szse_ratio: 0.10     # 深证 10%
+  bjse_ratio: 0.30     # 北证 30%
+  # ST 股票涨跌停比例
+  st_ratio: 0.05       # ST 5%
+  tick_size: 0.01      # 0.01元
+
+# 风控配置
+risk:
+  enable_single_position_limit: true
+  max_position_value_ratio: 1.0  # 单持仓最大市值占比 100%
+
+# 股票池配置
+universe:
+  min_lot_value: 1000.0  # 100股最低购买金额
