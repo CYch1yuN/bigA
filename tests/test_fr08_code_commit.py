@@ -6,10 +6,12 @@
 3. mock 注入固定 commit (abc1234) 后 JSON/Markdown 包含该值
 4. code_commit 不参与 content_hash（改变 code_commit 不影响 content_hash）
 5. 直接设置 result.code_commit 后 JSON/Markdown 正确输出
+6. 正式报告验收：code_commit 必须匹配 40 位十六进制 SHA（^[0-9a-f]{40}$）
 """
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -24,6 +26,8 @@ from ashare_quant.backtest.models import Signal, Side
 from ashare_quant.backtest.report import ReportGenerator
 from ashare_quant.cli import main
 from tests.backtest_samples import make_quotes, make_trade_dates
+
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
 # ------------------------------------------------------------------ #
@@ -209,3 +213,55 @@ class TestCLISetsCodeCommit:
 
         assert "代码提交号" in md
         assert "abc1234" in md
+
+
+# ------------------------------------------------------------------ #
+# 4. 正式报告验收：code_commit 必须是 40 位十六进制 SHA
+# ------------------------------------------------------------------ #
+class TestFormalReportCodeCommitSHA:
+    """正式 reports/phase-2/ 示例报告中 code_commit 必须是真实 git SHA。
+
+    单元测试中 mock 的 abc1234 可以保留，但正式归档报告不得为
+    null、空字符串或 no-git——必须匹配 ^[0-9a-f]{40}$。
+    """
+
+    PHASE2_DIR = Path(__file__).resolve().parent.parent / "reports" / "phase-2"
+
+    def test_json_code_commit_is_40_hex_sha(self):
+        """正式 JSON 报告 code_commit 匹配 ^[0-9a-f]{40}$。"""
+        json_path = self.PHASE2_DIR / "backtest-result.json"
+        with json_path.open("r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        code_commit = report.get("code_commit")
+        assert code_commit is not None, "code_commit 不得为 null"
+        assert code_commit != "", "code_commit 不得为空字符串"
+        assert code_commit != "no-git", "code_commit 不得为 no-git"
+        assert SHA_PATTERN.match(code_commit), (
+            f"code_commit 必须是 40 位十六进制 SHA，实际值: {code_commit}"
+        )
+
+    def test_markdown_code_commit_matches_json(self):
+        """Markdown 中代码提交号与 JSON 一致且为 40 位 SHA。"""
+        json_path = self.PHASE2_DIR / "backtest-result.json"
+        with json_path.open("r", encoding="utf-8") as f:
+            report = json.load(f)
+        code_commit = report["code_commit"]
+
+        md_path = self.PHASE2_DIR / "backtest-report.md"
+        md = md_path.read_text(encoding="utf-8")
+
+        assert "代码提交号" in md
+        assert code_commit in md
+        assert SHA_PATTERN.match(code_commit)
+
+    def test_json_audit_flags_still_present(self):
+        """正式报告中 audit_flags 字段仍然存在。"""
+        json_path = self.PHASE2_DIR / "backtest-result.json"
+        with json_path.open("r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        for o in report.get("orders", []):
+            assert "audit_flags" in o, "Order 缺少 audit_flags 字段"
+        for fl in report.get("fills", []):
+            assert "audit_flags" in fl, "Fill 缺少 audit_flags 字段"
