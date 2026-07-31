@@ -527,7 +527,11 @@ class TestAverageCostAndPartialSell:
 # ------------------------------------------------------------------ #
 class TestMissingBar:
     def test_missing_bar_rejected(self):
-        """信号针对一个在成交日没有行情的 symbol -> MISSING_BAR。"""
+        """信号针对一个在成交日没有行情的 symbol -> 被 UniverseFilter 拒绝。
+
+        注意：UniverseFilter 在风控之前执行，不存在的 symbol 因无行情数据
+        被 UNIVERSE_FILTERED 拒绝，而非进入风控阶段的 MISSING_BAR。
+        """
         quotes = make_quotes("000001", date(2024, 1, 2), 10)
         d = make_trade_dates(date(2024, 1, 2), 10)
         # 买入一个不存在的 symbol
@@ -535,7 +539,7 @@ class TestMissingBar:
         result = _run(quotes, signals, BacktestConfig(initial_cash=10000))
         assert len(result.fills) == 0
         assert result.orders[0].status == OrderStatus.REJECTED
-        assert result.orders[0].reject_reason == RejectReason.MISSING_BAR
+        assert result.orders[0].reject_reason == RejectReason.UNIVERSE_FILTERED
 
 
 # ------------------------------------------------------------------ #

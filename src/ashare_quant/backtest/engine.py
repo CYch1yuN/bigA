@@ -30,6 +30,7 @@ from .models import (
     OrderStatus,
     PortfolioSnapshot,
     Position,
+    RejectReason,
     Signal,
     StrategyContext,
     Side,
@@ -226,13 +227,36 @@ class BacktestEngine(BacktestEngineABC):
                         ),
                     )
                     orders.append(order)
-                else:
-                    order = Order(
-                        signal=signal,
-                        planned_fill_date=next_date,
-                    )
-                    orders.append(order)
-                    pending_orders.append(order)
+                    continue
+
+                # 6e-1. BUY 信号执行股票池过滤（SELL 不过滤，允许退出退市/ST/低流动性持仓）
+                if signal.side == Side.BUY:
+                    decision = uf.is_eligible(signal.symbol, signal.signal_date, context)
+                    if not decision.eligible:
+                        order = Order(
+                            signal=signal,
+                            planned_fill_date=next_date,
+                            status=OrderStatus.REJECTED,
+                            reject_reason=RejectReason.UNIVERSE_FILTERED,
+                            reject_detail=(
+                                f"{signal.symbol}: 股票池过滤: "
+                                f"{decision.reason}"
+                            ),
+                        )
+                        orders.append(order)
+                        logger.debug(
+                            "订单 %s 股票池过滤拒绝: %s",
+                            signal.symbol, decision.reason,
+                        )
+                        continue
+
+                # 6e-2. 通过过滤的信号转为挂单
+                order = Order(
+                    signal=signal,
+                    planned_fill_date=next_date,
+                )
+                orders.append(order)
+                pending_orders.append(order)
 
         # --- 7. 期末：取消剩余挂单 ---
         for order in pending_orders:

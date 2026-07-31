@@ -66,7 +66,7 @@ class TestOrderStatus:
 
 
 # -----------------------------------------------------------------------------
-# 3. 枚举：RejectReason（全部 9 个原因）
+# 3. 枚举：RejectReason（全部 10 个原因）
 # -----------------------------------------------------------------------------
 class TestRejectReason:
     """拒绝原因枚举。"""
@@ -82,12 +82,13 @@ class TestRejectReason:
             "LIMIT_DOWN",
             "MISSING_BAR",
             "INVALID_PRICE",
+            "UNIVERSE_FILTERED",
         }
         actual = {m.value for m in RejectReason}
         assert actual == expected
 
     def test_member_count(self) -> None:
-        assert len(list(RejectReason)) == 9
+        assert len(list(RejectReason)) == 10
 
     @pytest.mark.parametrize("reason", list(RejectReason))
     def test_each_reason_value_matches_name(self, reason: RejectReason) -> None:

@@ -1,4 +1,4 @@
-"""FR-04 回归测试：资金检查与 Broker 实际扣款公式一致性。
+﻿"""FR-04 回归测试：资金检查与 Broker 实际扣款公式一致性。
 
 验证修复后的统一成本计算确保：
 - 风控预检与实际成交使用完全相同的成本公式
@@ -68,12 +68,20 @@ def _make_exact_quotes(
     start: date = date(2024, 1, 2),
     n_days: int = 5,
     open_raw: float = 9.99,
+    close_price: float | None = None,
 ) -> pd.DataFrame:
     """生成 open_raw 恒定（无 daily_return 偏移）的行情 DataFrame。
 
-    与 ``make_quotes`` 不同，本函数每天的开盘价、收盘价均为 ``open_raw``，
+    与 ``make_quotes`` 不同，本函数每天的开盘价均为 ``open_raw``，
     不乘以 0.998 系数，确保边界测试中成本计算精确可控。
+
+    Args:
+        open_raw: 每日开盘价（未复权）。
+        close_price: 每日收盘价；为 None 时与 open_raw 相同。
+            UniverseFilter 使用 close_raw 判断一手金额，当 close_price
+            与 open_raw 不同时需显式指定，确保过滤通过。
     """
+    close_p = close_price if close_price is not None else open_raw
     dates = make_trade_dates(start, n_days)
     rows = []
     for dt in dates:
@@ -81,9 +89,9 @@ def _make_exact_quotes(
             symbol=symbol,
             dt=dt,
             open_price=open_raw,
-            high=open_raw * 1.01,
-            low=open_raw * 0.99,
-            close=open_raw,
+            high=max(open_raw, close_p) * 1.01,
+            low=min(open_raw, close_p) * 0.99,
+            close=close_p,
         )
         rows.append(row)
     return pd.DataFrame(rows)
@@ -141,7 +149,7 @@ class TestBoundary1004Half:
 
     def test_rejected_not_filled(self):
         """1004.50 元买入 100 股 @9.99 必须被拒绝，fills 为空。"""
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "boundary")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -153,7 +161,7 @@ class TestBoundary1004Half:
 
     def test_cash_never_negative(self):
         """所有 daily_equity.cash >= 0。"""
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "boundary")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -164,7 +172,7 @@ class TestBoundary1004Half:
 
     def test_reject_detail_recorded(self):
         """拒单订单必须记录 reject_detail。"""
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "boundary")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -195,7 +203,7 @@ class TestBoundary1004Half:
         )
 
         # 1004.50 < 1005.01 → 风控必须拒单
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "reproduce")]
         result = _run_backtest(quotes, signals, config)
@@ -329,7 +337,7 @@ class TestAllFeesPresent:
             initial_cash=1004.50,
             slippage=SlippageConfig(bps=50.0, tick_size=0.01),
         )
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "high slippage")]
         result = _run_backtest(quotes, signals, config)
@@ -356,13 +364,14 @@ class TestAllFeesPresent:
         )
 
         config = BacktestConfig(
-            initial_cash=999.00,  # 刚好买 100 股 @9.99
+            initial_cash=999.00,  # 刚好买 100 股 @9.99（零费率）
             commission=CommissionConfig(rate=0.0, minimum=0.0),
             stamp_duty=StampDutyConfig(rate=0.0),
             transfer_fee=TransferFeeConfig(rate=0.0),
             slippage=SlippageConfig(bps=0.0, tick_size=0.01),
         )
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        # close_price=10.00 使一手金额=1000>=min_lot_value，UniverseFilter 通过
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "zero fees")]
         result = _run_backtest(quotes, signals, config)
@@ -403,7 +412,7 @@ class TestBrokerCashProtection:
 
     def test_broker_cash_protection_via_engine(self):
         """通过引擎验证 Broker 保护生效。"""
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "broker protection")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -422,7 +431,7 @@ class TestRejectDetailAudit:
 
     def test_risk_reject_has_detail(self):
         """风控拒单有 reject_detail。"""
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "risk reject")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -452,7 +461,7 @@ class TestRejectDetailAudit:
         """reject_detail 出现在 JSON 报告中。"""
         from ashare_quant.backtest.report import ReportGenerator
 
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "json detail")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -469,7 +478,7 @@ class TestRejectDetailAudit:
         """reject_detail 出现在订单 DataFrame 中。"""
         from ashare_quant.backtest.report import ReportGenerator
 
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "df detail")]
         config = BacktestConfig(initial_cash=1004.50)
@@ -486,7 +495,7 @@ class TestRejectDetailAudit:
         """reject_detail 出现在 Markdown 报告的拒绝明细表中。"""
         from ashare_quant.backtest.report import ReportGenerator
 
-        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99)
+        quotes = _make_exact_quotes("000001", date(2024, 1, 2), 5, open_raw=9.99, close_price=10.00)
         d = make_trade_dates(date(2024, 1, 2), 5)
         signals = [Signal(d[0], "000001", Side.BUY, 100, "md detail")]
         config = BacktestConfig(initial_cash=1004.50)

@@ -41,6 +41,7 @@ class RejectReason(str, Enum):
     LIMIT_DOWN = "LIMIT_DOWN"
     MISSING_BAR = "MISSING_BAR"
     INVALID_PRICE = "INVALID_PRICE"
+    UNIVERSE_FILTERED = "UNIVERSE_FILTERED"
 
 
 @dataclass
