@@ -1,0 +1,425 @@
+{
+  "config_summary": {
+    "initial_cash": 10000.0,
+    "lot_size": 100,
+    "commission": {
+      "rate": 0.0003,
+      "minimum": 5.0
+    },
+    "stamp_duty": {
+      "rate": 0.001
+    },
+    "transfer_fee": {
+      "rate": 1e-05
+    },
+    "slippage": {
+      "bps": 10.0,
+      "tick_size": 0.01
+    },
+    "limit": {
+      "main_ratio": 0.1,
+      "star_ratio": 0.2,
+      "szse_ratio": 0.1,
+      "bjse_ratio": 0.3,
+      "st_ratio": 0.05,
+      "tick_size": 0.01
+    },
+    "risk": {
+      "enable_single_position_limit": true,
+      "max_position_value_ratio": 1.0
+    },
+    "universe": {
+      "min_lot_value": 1000.0
+    }
+  },
+  "metrics": {
+    "initial_equity": 10000.0,
+    "final_equity": 9985.006084126126,
+    "total_return": -0.0014993915873875,
+    "annualized_return": -0.037107037444800595,
+    "max_drawdown": 0.00190199899949998,
+    "total_trades": 3,
+    "win_rate": 0.0,
+    "profit_loss_ratio": 0.0,
+    "turnover_rate": 0.030082552763270196,
+    "unfillable_order_rate": 0.0,
+    "reject_reason_counts": {},
+    "daily_cash": [
+      {
+        "date": "2024-01-02",
+        "cash": 10000.0
+      },
+      {
+        "date": "2024-01-03",
+        "cash": 8993.99
+      },
+      {
+        "date": "2024-01-04",
+        "cash": 8993.99
+      },
+      {
+        "date": "2024-01-05",
+        "cash": 8993.99
+      },
+      {
+        "date": "2024-01-08",
+        "cash": 9986.98
+      },
+      {
+        "date": "2024-01-09",
+        "cash": 8975.97
+      },
+      {
+        "date": "2024-01-10",
+        "cash": 8975.97
+      },
+      {
+        "date": "2024-01-11",
+        "cash": 8975.97
+      },
+      {
+        "date": "2024-01-12",
+        "cash": 8975.97
+      },
+      {
+        "date": "2024-01-15",
+        "cash": 8975.97
+      }
+    ],
+    "daily_position_value": [
+      {
+        "date": "2024-01-02",
+        "position_value": 0.0
+      },
+      {
+        "date": "2024-01-03",
+        "position_value": 1000.0
+      },
+      {
+        "date": "2024-01-04",
+        "position_value": 1000.0
+      },
+      {
+        "date": "2024-01-05",
+        "position_value": 1000.0
+      },
+      {
+        "date": "2024-01-08",
+        "position_value": 0.0
+      },
+      {
+        "date": "2024-01-09",
+        "position_value": 1005.0100100050003
+      },
+      {
+        "date": "2024-01-10",
+        "position_value": 1006.0150200150052
+      },
+      {
+        "date": "2024-01-11",
+        "position_value": 1007.02103503502
+      },
+      {
+        "date": "2024-01-12",
+        "position_value": 1008.028056070055
+      },
+      {
+        "date": "2024-01-15",
+        "position_value": 1009.036084126125
+      }
+    ],
+    "daily_equity_list": [
+      {
+        "date": "2024-01-02",
+        "total_equity": 10000.0
+      },
+      {
+        "date": "2024-01-03",
+        "total_equity": 9993.99
+      },
+      {
+        "date": "2024-01-04",
+        "total_equity": 9993.99
+      },
+      {
+        "date": "2024-01-05",
+        "total_equity": 9993.99
+      },
+      {
+        "date": "2024-01-08",
+        "total_equity": 9986.98
+      },
+      {
+        "date": "2024-01-09",
+        "total_equity": 9980.980010005
+      },
+      {
+        "date": "2024-01-10",
+        "total_equity": 9981.985020015005
+      },
+      {
+        "date": "2024-01-11",
+        "total_equity": 9982.99103503502
+      },
+      {
+        "date": "2024-01-12",
+        "total_equity": 9983.998056070055
+      },
+      {
+        "date": "2024-01-15",
+        "total_equity": 9985.006084126126
+      }
+    ]
+  },
+  "orders": [
+    {
+      "order_id": "915dc5d7e13d",
+      "signal_date": "2024-01-02",
+      "symbol": "000001",
+      "side": "BUY",
+      "quantity": 100,
+      "reason": "金标准买入",
+      "planned_fill_date": "2024-01-03",
+      "status": "FILLED",
+      "reject_reason": null,
+      "fill": {
+        "order_id": "915dc5d7e13d",
+        "fill_date": "2024-01-03",
+        "symbol": "000001",
+        "side": "BUY",
+        "quantity": 100,
+        "raw_open_price": 10.0,
+        "slippage_price": 10.01,
+        "commission": 5.0,
+        "stamp_duty": 0.0,
+        "transfer_fee": 0.01,
+        "total_cost": 5.01,
+        "cash_change": -1006.01,
+        "turnover": 1001.0
+      }
+    },
+    {
+      "order_id": "ef7dfeb7c383",
+      "signal_date": "2024-01-05",
+      "symbol": "000001",
+      "side": "SELL",
+      "quantity": 100,
+      "reason": "金标准卖出",
+      "planned_fill_date": "2024-01-08",
+      "status": "FILLED",
+      "reject_reason": null,
+      "fill": {
+        "order_id": "ef7dfeb7c383",
+        "fill_date": "2024-01-08",
+        "symbol": "000001",
+        "side": "SELL",
+        "quantity": 100,
+        "raw_open_price": 10.0,
+        "slippage_price": 9.99,
+        "commission": 5.0,
+        "stamp_duty": 1.0,
+        "transfer_fee": 0.01,
+        "total_cost": 6.01,
+        "cash_change": 992.99,
+        "turnover": 999.0
+      }
+    },
+    {
+      "order_id": "990fb57767bd",
+      "signal_date": "2024-01-08",
+      "symbol": "000002",
+      "side": "BUY",
+      "quantity": 200,
+      "reason": "第二只股票买入",
+      "planned_fill_date": "2024-01-09",
+      "status": "FILLED",
+      "reject_reason": null,
+      "fill": {
+        "order_id": "990fb57767bd",
+        "fill_date": "2024-01-09",
+        "symbol": "000002",
+        "side": "BUY",
+        "quantity": 200,
+        "raw_open_price": 5.015,
+        "slippage_price": 5.03,
+        "commission": 5.0,
+        "stamp_duty": 0.0,
+        "transfer_fee": 0.01,
+        "total_cost": 5.01,
+        "cash_change": -1011.01,
+        "turnover": 1006.0
+      }
+    }
+  ],
+  "fills": [
+    {
+      "order_id": "915dc5d7e13d",
+      "fill_date": "2024-01-03",
+      "symbol": "000001",
+      "side": "BUY",
+      "quantity": 100,
+      "raw_open_price": 10.0,
+      "slippage_price": 10.01,
+      "commission": 5.0,
+      "stamp_duty": 0.0,
+      "transfer_fee": 0.01,
+      "total_cost": 5.01,
+      "cash_change": -1006.01,
+      "turnover": 1001.0
+    },
+    {
+      "order_id": "ef7dfeb7c383",
+      "fill_date": "2024-01-08",
+      "symbol": "000001",
+      "side": "SELL",
+      "quantity": 100,
+      "raw_open_price": 10.0,
+      "slippage_price": 9.99,
+      "commission": 5.0,
+      "stamp_duty": 1.0,
+      "transfer_fee": 0.01,
+      "total_cost": 6.01,
+      "cash_change": 992.99,
+      "turnover": 999.0
+    },
+    {
+      "order_id": "990fb57767bd",
+      "fill_date": "2024-01-09",
+      "symbol": "000002",
+      "side": "BUY",
+      "quantity": 200,
+      "raw_open_price": 5.015,
+      "slippage_price": 5.03,
+      "commission": 5.0,
+      "stamp_duty": 0.0,
+      "transfer_fee": 0.01,
+      "total_cost": 5.01,
+      "cash_change": -1011.01,
+      "turnover": 1006.0
+    }
+  ],
+  "daily_equity": [
+    {
+      "snapshot_date": "2024-01-02",
+      "cash": 10000.0,
+      "position_value": 0.0,
+      "total_equity": 10000.0,
+      "daily_pnl": 0.0,
+      "cumulative_pnl": 0.0,
+      "drawdown": 0.0
+    },
+    {
+      "snapshot_date": "2024-01-03",
+      "cash": 8993.99,
+      "position_value": 1000.0,
+      "total_equity": 9993.99,
+      "daily_pnl": -6.01,
+      "cumulative_pnl": -6.01,
+      "drawdown": 0.000601
+    },
+    {
+      "snapshot_date": "2024-01-04",
+      "cash": 8993.99,
+      "position_value": 1000.0,
+      "total_equity": 9993.99,
+      "daily_pnl": 0.0,
+      "cumulative_pnl": -6.01,
+      "drawdown": 0.000601
+    },
+    {
+      "snapshot_date": "2024-01-05",
+      "cash": 8993.99,
+      "position_value": 1000.0,
+      "total_equity": 9993.99,
+      "daily_pnl": 0.0,
+      "cumulative_pnl": -6.01,
+      "drawdown": 0.000601
+    },
+    {
+      "snapshot_date": "2024-01-08",
+      "cash": 9986.98,
+      "position_value": 0.0,
+      "total_equity": 9986.98,
+      "daily_pnl": -7.01,
+      "cumulative_pnl": -13.02,
+      "drawdown": 0.001302
+    },
+    {
+      "snapshot_date": "2024-01-09",
+      "cash": 8975.97,
+      "position_value": 1005.0100100050003,
+      "total_equity": 9980.980010005,
+      "daily_pnl": -5.9999899949998,
+      "cumulative_pnl": -19.0199899949998,
+      "drawdown": 0.00190199899949998
+    },
+    {
+      "snapshot_date": "2024-01-10",
+      "cash": 8975.97,
+      "position_value": 1006.0150200150052,
+      "total_equity": 9981.985020015005,
+      "daily_pnl": 1.005010010005,
+      "cumulative_pnl": -18.0149799849948,
+      "drawdown": 0.00180149799849948
+    },
+    {
+      "snapshot_date": "2024-01-11",
+      "cash": 8975.97,
+      "position_value": 1007.02103503502,
+      "total_equity": 9982.99103503502,
+      "daily_pnl": 1.0060150200148,
+      "cumulative_pnl": -17.00896496498,
+      "drawdown": 0.001700896496498
+    },
+    {
+      "snapshot_date": "2024-01-12",
+      "cash": 8975.97,
+      "position_value": 1008.028056070055,
+      "total_equity": 9983.998056070055,
+      "daily_pnl": 1.007021035035,
+      "cumulative_pnl": -16.001943929945,
+      "drawdown": 0.0016001943929945
+    },
+    {
+      "snapshot_date": "2024-01-15",
+      "cash": 8975.97,
+      "position_value": 1009.036084126125,
+      "total_equity": 9985.006084126126,
+      "daily_pnl": 1.00802805607,
+      "cumulative_pnl": -14.993915873875,
+      "drawdown": 0.0014993915873875
+    }
+  ],
+  "final_positions": {
+    "000001": {
+      "symbol": "000001",
+      "total_quantity": 0,
+      "sellable_quantity": 0,
+      "frozen_buy_quantity": 0,
+      "avg_raw_cost": 0.0
+    },
+    "000002": {
+      "symbol": "000002",
+      "total_quantity": 200,
+      "sellable_quantity": 200,
+      "frozen_buy_quantity": 0,
+      "avg_raw_cost": 5.03
+    }
+  },
+  "limitations": [
+    "Phase 2 不处理分红、送股、拆并股和配股",
+    "前复权价格仅用于信号，未复权价格用于成交",
+    "仅支持下一交易日开盘市价撮合"
+  ],
+  "data_range": {
+    "start_date": "2024-01-02",
+    "end_date": "2024-01-15",
+    "trading_days": 10,
+    "symbols": [
+      "000001",
+      "000002"
+    ]
+  },
+  "content_hash": "e543d1acb59c6d3537bab34d968b9a5cc764afebe6d4e4d71f2d504dd24aad75",
+  "code_commit": null
+}

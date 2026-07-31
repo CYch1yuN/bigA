@@ -28,6 +28,7 @@ data/
 # 允许提交的示例数据样本（小型合成）除外
 !tests/data/*.parquet
 !tests/data/*.csv
+!reports/phase-2/*.parquet
 
 # --- 日志与生成产物 ---
 logs/

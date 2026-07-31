@@ -1,0 +1,23 @@
+[
+  {
+    "signal_date": "2024-01-02",
+    "symbol": "000001",
+    "side": "BUY",
+    "quantity": 100,
+    "reason": "金标准买入"
+  },
+  {
+    "signal_date": "2024-01-05",
+    "symbol": "000001",
+    "side": "SELL",
+    "quantity": 100,
+    "reason": "金标准卖出"
+  },
+  {
+    "signal_date": "2024-01-08",
+    "symbol": "000002",
+    "side": "BUY",
+    "quantity": 200,
+    "reason": "第二只股票买入"
+  }
+]
