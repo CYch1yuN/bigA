@@ -1,0 +1,75 @@
+# Phase 3 金标准研究报告配置
+# 使用精简参数以便在合理时间内完成演示运行。
+# 参数候选集合保持与任务书一致，仅调整滚动切分和蒙特卡洛路径数。
+
+initial_cash: 1000.0
+lot_size: 100
+
+universe:
+  min_listing_days: 120
+  min_valid_days: 15
+  valid_days_window: 20
+  min_turnover: 1000000.0  # 合成数据成交额较低，降低阈值
+  turnover_window: 20
+
+walk_forward:
+  train_years: 1
+  validation_months: 3
+  test_years: 1
+  step_years: 1
+  min_total_years: 2
+
+# 金标准演示仅使用基线参数（1 个候选），正式配置使用完整 3^4=81 / 3^6=729 候选集
+steady:
+  trend_window: [120]
+  momentum_window: [60]
+  volatility_window: [20]
+  minimum_score: [0.0]
+
+aggressive:
+  breakout_window: [20]
+  volume_window: [20]
+  volume_ratio: [1.5]
+  relative_strength_window: [20]
+  exit_low_window: [10]
+  max_holding_days: [20]
+
+stress:
+  fee_multiplier: 2.0
+  slippage_multiplier: 2.0
+
+monte_carlo:
+  random_seed: 20260731
+  n_paths: 100              # 金标准演示使用 100 条路径
+  path_length: 244
+  block_length: 5
+  initial_capital: 1000.0
+  ten_x_target: 10000.0
+  loss_50_threshold: 500.0
+  near_zero_threshold: 100.0
+
+backtest:
+  initial_cash: 1000.0
+  lot_size: 100
+  commission:
+    rate: 0.0003
+    minimum: 5.0
+  stamp_duty:
+    rate: 0.001
+  transfer_fee:
+    rate: 0.00001
+  slippage:
+    bps: 10.0
+    tick_size: 0.01
+  limit:
+    main_ratio: 0.10
+    star_ratio: 0.20
+    szse_ratio: 0.10
+    bjse_ratio: 0.30
+    st_ratio: 0.05
+    tick_size: 0.01
+  risk:
+    enable_single_position_limit: true
+    max_position_value_ratio: 1.0
+  universe:
+    min_lot_value: 1000.0
