@@ -362,6 +362,20 @@ class HistoricalUniverseFilter(UniverseFilter):
         self._lot_size = lot_size
         self._available_cash = available_cash
 
+        # 资格判定缓存：不依赖现金的过滤步骤（0-6）结果可跨参数组合复用。
+        # 缓存键: (symbol, dt)
+        # 缓存值: (eligible_excluding_cash, reason, close_raw)
+        # 当 close_raw > 0 时 eligible_excluding_cash=True，只需检查现金条件。
+        self._eligibility_cache: dict[tuple[str, date], tuple[bool, str, float]] = {}
+
+    def clear_cache(self) -> None:
+        """清除资格判定缓存。
+
+        在切换数据源（如从 walk-forward 验证切换到参数扰动）时调用，
+        确保缓存不会跨不同数据集复用。
+        """
+        self._eligibility_cache.clear()
+
     # ------------------------------------------------------------------ #
     # UniverseFilter 接口实现
     # ------------------------------------------------------------------ #
@@ -460,71 +474,94 @@ class HistoricalUniverseFilter(UniverseFilter):
         6. 过去 valid_days_window 日有效交易天数 >= min_valid_days
         7. 过去 turnover_window 日平均成交额 >= min_turnover
         8. 可用现金可购买一手
+
+        性能优化：步骤 0-6 不依赖策略参数或现金，相同 (symbol, dt) 的
+        结果可跨参数组合复用。缓存值包含 close_raw 以支持步骤 7 的现金检查。
         """
+        # 缓存命中：非现金检查结果可复用
+        cache_key = (symbol, dt)
+        cached = self._eligibility_cache.get(cache_key)
+        if cached is not None:
+            eligible, reason, close_raw = cached
+            if not eligible:
+                return EligibilityDecision(False, reason)
+            # 步骤 0-6 通过，只需检查现金条件（步骤 7）
+            if cash is not None:
+                lot_cost = close_raw * self._lot_size
+                if lot_cost > cash:
+                    return EligibilityDecision(
+                        False,
+                        f"{symbol}: 一手成本 {lot_cost:.2f}"
+                        f" > 可用现金 {cash:.2f}",
+                    )
+            return EligibilityDecision(True, "")
+
         # 0. 行情数据保护
         if quotes is None or len(quotes) == 0:
+            self._eligibility_cache[cache_key] = (False, "无行情数据，无法判断可交易性", 0.0)
             return EligibilityDecision(False, "无行情数据，无法判断可交易性")
 
         # 1. ST / *ST / 退市整理 / 已退市（point-in-time 状态表查询）
         st_status = self._status_table.get_st_status(symbol, dt)
         if self._status_table.is_st(symbol, dt):
-            return EligibilityDecision(
-                False, f"{symbol}: {dt} ST/*ST 状态({st_status})"
-            )
+            reason = f"{symbol}: {dt} ST/*ST 状态({st_status})"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
         if self._status_table.is_delisting(symbol, dt):
-            return EligibilityDecision(
-                False, f"{symbol}: {dt} 退市整理期({st_status})"
-            )
+            reason = f"{symbol}: {dt} 退市整理期({st_status})"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
         if self._status_table.is_delisted(symbol, dt):
-            return EligibilityDecision(
-                False, f"{symbol}: {dt} 已退市"
-            )
+            reason = f"{symbol}: {dt} 已退市"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         # 2. 上市不足 min_listing_days 个交易日
         listed_date = self._status_table.get_listed_date(symbol)
         if listed_date is None:
-            return EligibilityDecision(
-                False,
-                f"{symbol}: 无上市日期记录，无法验证上市时长",
-            )
+            reason = f"{symbol}: 无上市日期记录，无法验证上市时长"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
         market_dates = self._get_market_dates(quotes, dt)
         trading_days_since_listing = sum(
             1 for d in market_dates if d >= listed_date
         )
         if trading_days_since_listing < self._min_listing_days:
-            return EligibilityDecision(
-                False,
+            reason = (
                 f"{symbol}: 上市交易 {trading_days_since_listing} 日"
-                f" < 最低 {self._min_listing_days} 日",
+                f" < 最低 {self._min_listing_days} 日"
             )
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         # 3. 当日行情记录存在
         sym_quotes = self._filter_symbol_quotes(quotes, symbol, dt)
         day_row = self._get_day_row(sym_quotes, dt)
         if day_row is None:
-            return EligibilityDecision(
-                False,
+            reason = (
                 f"{symbol}: {dt} 当日无行情记录"
-                f"（停牌无数据或上市/退市区间外）",
+                f"（停牌无数据或上市/退市区间外）"
             )
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         # 4. 停牌 / 不可交易 / 无效价格
         is_suspended = bool(day_row.get("is_suspended", False))
         is_tradable = bool(day_row.get("is_tradable", True))
         if is_suspended or not is_tradable:
-            return EligibilityDecision(
-                False,
+            reason = (
                 f"{symbol}: {dt} 停牌或不可交易"
                 f"(is_suspended={is_suspended}, "
-                f"is_tradable={is_tradable})",
+                f"is_tradable={is_tradable})"
             )
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         close_raw = self._safe_float(day_row.get("close_raw", 0))
         if not (close_raw > 0):
-            return EligibilityDecision(
-                False,
-                f"{symbol}: {dt} 无效收盘价(close_raw={close_raw})",
-            )
+            reason = f"{symbol}: {dt} 无效收盘价(close_raw={close_raw})"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         # 5. 过去 valid_days_window 日有效交易天数 >= min_valid_days
         recent_dates = market_dates[-(self._valid_days_window):]
@@ -534,11 +571,12 @@ class HistoricalUniverseFilter(UniverseFilter):
             if row is not None and not bool(row.get("is_suspended", False)):
                 valid_count += 1
         if valid_count < self._min_valid_days:
-            return EligibilityDecision(
-                False,
+            reason = (
                 f"{symbol}: 过去 {self._valid_days_window} 日有效交易 "
-                f"{valid_count} 天 < {self._min_valid_days} 天",
+                f"{valid_count} 天 < {self._min_valid_days} 天"
             )
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
         # 6. 过去 turnover_window 日平均成交额 >= min_turnover
         turnover_col = self._get_turnover_column(quotes)
@@ -546,19 +584,22 @@ class HistoricalUniverseFilter(UniverseFilter):
             sym_quotes, recent_dates, self._turnover_window
         )
         if recent_rows.empty:
-            return EligibilityDecision(
-                False,
-                f"{symbol}: 过去 {self._turnover_window} 日无成交额数据",
-            )
+            reason = f"{symbol}: 过去 {self._turnover_window} 日无成交额数据"
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
         avg_turnover = float(recent_rows[turnover_col].mean())
         if avg_turnover < self._min_turnover:
-            return EligibilityDecision(
-                False,
+            reason = (
                 f"{symbol}: 过去 {self._turnover_window} 日平均成交额 "
-                f"{avg_turnover:.2f} < {self._min_turnover:.2f}",
+                f"{avg_turnover:.2f} < {self._min_turnover:.2f}"
             )
+            self._eligibility_cache[cache_key] = (False, reason, 0.0)
+            return EligibilityDecision(False, reason)
 
-        # 7. 可用现金无法购买一手
+        # 步骤 0-6 全部通过，缓存结果（含 close_raw 供现金检查复用）
+        self._eligibility_cache[cache_key] = (True, "", close_raw)
+
+        # 7. 可用现金无法购买一手（不缓存，因现金随交易变化）
         if cash is not None:
             lot_cost = close_raw * self._lot_size
             if lot_cost > cash:

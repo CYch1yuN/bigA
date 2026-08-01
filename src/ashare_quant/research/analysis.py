@@ -975,6 +975,8 @@ class ResearchRunner:
 
         # 预过滤行情数据
         filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
+        # 清除缓存，确保压力测试使用正确的数据源
+        self._universe_filter.clear_cache()
 
         results: list[StressResult] = []
         for scenario, stress_config in stress_configs:
@@ -1047,6 +1049,8 @@ class ResearchRunner:
 
         # 预过滤行情数据，大幅减少每次回测的数据量
         filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
+        # 清除缓存，确保参数扰动使用正确的数据源
+        self._universe_filter.clear_cache()
         calc = MetricsCalculator()
         all_results: list[dict[str, Any]] = []
 
@@ -1207,6 +1211,8 @@ class ResearchRunner:
 
         # 预过滤行情数据，大幅减少每次回测的数据量
         filtered_quotes = self._filter_quotes(quotes, val_dates[0], val_dates[-1])
+        # 清除缓存，确保参数选择使用正确的数据源
+        self._universe_filter.clear_cache()
 
         for params in candidates:
             strategy = SteadyStrategy(
@@ -1248,6 +1254,8 @@ class ResearchRunner:
 
         # 预过滤行情数据，大幅减少每次回测的数据量
         filtered_quotes = self._filter_quotes(quotes, val_dates[0], val_dates[-1])
+        # 清除缓存，确保参数选择使用正确的数据源
+        self._universe_filter.clear_cache()
 
         for params in candidates:
             strategy = AggressiveStrategy(
@@ -1288,6 +1296,8 @@ class ResearchRunner:
 
         # 预过滤行情数据
         filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
+        # 清除缓存，确保测试期使用正确的数据源
+        self._universe_filter.clear_cache()
 
         if track_type == TrackType.STEADY:
             strategy = SteadyStrategy(
