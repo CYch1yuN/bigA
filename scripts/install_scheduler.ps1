@@ -102,7 +102,14 @@ function Register-Task {
         schtasks /Delete /TN "$Name" /F 2>$null | Out-Null
     }
     if ($PSCmdlet.ShouldProcess($Name, "注册计划任务")) {
-        schtasks /Create /TN "$Name" /SC $Schedule /D $Day /ST $Time /RL $RunLevel /TR "$action" /F
+        # 注意：DAILY 任务不得带 /D（schtasks 对 /SC DAILY 不接受 /D 参数）；
+        # 旧实现无条件附加 /D $Day（Daily 传 $null）导致
+        # "Invalid syntax. Value expected for '/D'" 而创建失败。
+        if ($Schedule -eq "WEEKLY") {
+            schtasks /Create /TN "$Name" /SC $Schedule /D $Day /ST $Time /RL $RunLevel /TR "$action" /F
+        } else {
+            schtasks /Create /TN "$Name" /SC $Schedule /ST $Time /RL $RunLevel /TR "$action" /F
+        }
     }
 }
 

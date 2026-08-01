@@ -702,6 +702,14 @@ def test_scheduler_plan_commands():
     cmds_f = plan.schtasks_commands(force=True)
     assert any("/Delete" in c for c in cmds_f)
 
+    # DAILY 命令不得携带 /D（schtasks 对 /SC DAILY 不接受 /D，会报
+    # "Invalid syntax. Value expected for '/D'" 导致任务创建失败——这是
+    # install_scheduler.ps1 历史 bug 的语义锁定）。
+    daily_cmd = next(c for c in cmds if "/SC DAILY" in c)
+    assert "/D " not in daily_cmd, f"DAILY 任务命令不得包含 /D: {daily_cmd}"
+    weekly_cmd = next(c for c in cmds if "/SC WEEKLY" in c)
+    assert "/D SAT" in weekly_cmd
+
 
 # ---------------------------------------------------------------------- #
 # 模拟账户与观察窗口
