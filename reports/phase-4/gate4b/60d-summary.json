@@ -1,0 +1,1124 @@
+{
+  "gate": "Gate 4B",
+  "generated_at": "2026-08-02T12:00:00",
+  "synthetic": true,
+  "online": false,
+  "window": {
+    "first_day": "2020-07-16",
+    "last_day": "2020-10-07",
+    "trading_days": 60
+  },
+  "daily": [
+    {
+      "date": "2020-07-16",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-17",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-20",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-21",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-22",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-23",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-24",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-27",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-28",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-29",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-30",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-07-31",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-03",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-04",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-05",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-06",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-07",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-10",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-11",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-12",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-13",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-14",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-17",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-18",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-19",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-20",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-21",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-24",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-25",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-26",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-27",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-28",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-08-31",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-01",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-02",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-03",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-04",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-07",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-08",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-09",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-10",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-11",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-14",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-15",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-16",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-17",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-18",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-21",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-22",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-23",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-24",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-25",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-28",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-29",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-09-30",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-10-01",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-10-02",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 1,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-10-05",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 1,
+      "filled": 1,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-10-06",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 0,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    },
+    {
+      "date": "2020-10-07",
+      "state": "SUCCESS",
+      "exit_code": 0,
+      "signals": 1,
+      "orders": 0,
+      "filled": 0,
+      "identity_ok": true,
+      "cash_ok": true
+    }
+  ],
+  "totals": {
+    "signals": 2,
+    "orders": 1,
+    "filled": 1,
+    "duplicate_orders": 0,
+    "identity_violations": 0,
+    "negative_cash_days": 0,
+    "non_success_days": 0
+  },
+  "observation": {
+    "accounts": [
+      "paper-steady",
+      "paper-aggressive"
+    ],
+    "observation_days_final": {
+      "paper-steady": 60,
+      "paper-aggressive": 60
+    }
+  },
+  "equity_curves": {
+    "paper-steady": [
+      {
+        "date": "2020-07-16",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-20",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-22",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-23",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-27",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-29",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-30",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-31",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-03",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-04",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-05",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-06",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-07",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-10",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-11",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-12",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-13",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-14",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-18",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-19",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-20",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-25",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-26",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-27",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-31",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-01",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-02",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-03",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-04",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-07",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-08",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-09",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-10",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-11",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-14",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-15",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-16",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-18",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-22",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-23",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-25",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-29",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-30",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-01",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-02",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-05",
+        "total_equity": "995.09"
+      },
+      {
+        "date": "2020-10-06",
+        "total_equity": "997.79"
+      },
+      {
+        "date": "2020-10-07",
+        "total_equity": "1000.51"
+      }
+    ],
+    "paper-aggressive": [
+      {
+        "date": "2020-07-16",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-20",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-22",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-23",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-27",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-29",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-30",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-07-31",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-03",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-04",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-05",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-06",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-07",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-10",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-11",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-12",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-13",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-14",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-18",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-19",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-20",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-25",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-26",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-27",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-08-31",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-01",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-02",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-03",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-04",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-07",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-08",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-09",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-10",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-11",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-14",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-15",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-16",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-17",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-18",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-21",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-22",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-23",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-24",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-25",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-28",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-29",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-09-30",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-01",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-02",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-05",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-06",
+        "total_equity": "1000.00"
+      },
+      {
+        "date": "2020-10-07",
+        "total_equity": "1000.00"
+      }
+    ]
+  },
+  "eligibility": {
+    "paper-steady": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
+    "paper-aggressive": "SIMULATION_ONLY",
+    "note": "两轨均不具备实盘资格；观察窗口完成不等同于实盘授权"
+  },
+  "disclaimer": "本报告由本机自动化研究系统生成，全部为合成数据模拟记录，未连接券商、未涉及真实资金。"
+}
