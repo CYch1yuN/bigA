@@ -231,8 +231,15 @@ def build_run_summary(
 def _manifest_files(
     run_dir: Path, *, extra_files: Iterable[Path] = ()
 ) -> list[Path]:
-    """run 目录下全部产物（排除 manifest 自身）+ 额外文件，稳定排序。"""
-    files = [p for p in run_dir.rglob("*") if p.is_file()]
+    """run 目录下全部产物（**排除 manifest 自身**）+ 额外文件，稳定排序。
+
+    若不排除自身：重跑覆盖旧 manifest.json 时，旧 manifest 会以过期哈希被
+    列入新 manifest 的清单，导致 ``verify_manifest`` 不可复算（FR-23 自引用缺陷）。
+    """
+    files = [
+        p for p in run_dir.rglob("*")
+        if p.is_file() and p.name != "manifest.json"
+    ]
     files.extend(Path(f) for f in extra_files if Path(f).is_file())
     files = sorted(set(files), key=lambda p: str(p).replace("\\", "/"))
     return files

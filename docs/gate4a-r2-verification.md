@@ -1,12 +1,20 @@
 # Gate 4A 第二轮复验报告（14 项）
 
 分支 `workbuddy/phase-4-automation` → PR #7（base=main，**不得合并**）
-复验日期：2026-08-02（本地）· 复验提交：`681ea55`（HEAD）
+复验日期：2026-08-02（本地）
+
+## 提交关系（研究代码提交与文档提交分开记录）
+
+- **code_commit（功能代码最后提交）**：`681ea55`（feat(phase-4): complete FR-23 audit artifact set）
+- **document_commit（复验报告所在文档提交）**：`544f20a`（初版）→ 本修订版由后续文档提交承载
+- 注意：`681ea55` 是**功能代码**最后提交，**不是**当前 PR HEAD；当前 HEAD 是承载本报告的文档提交。
+  不得将功能提交与文档提交混为一谈。
 
 ## 1. 全量测试数量
 
 - `compileall -q src`：**exit 0**
-- `pytest tests -q`：**1330 passed / 0 failed / exit 0**
+- `pytest --collect-only -q tests`：**1327 项**（Codex 独立收集口径，非手写预计值）
+- `pytest tests -q`：**1327 passed / 0 failed / exit 0**
 - 关键 FR 测试集（FR-19/20/21/22/23/24/25 + phase4）：全绿
 
 ## 2. 总覆盖率
@@ -16,8 +24,8 @@
 
 ## 3. automation 包覆盖率
 
-- `ashare_quant.automation` = **(3964−352)/3964 = 91.1%**，门槛 ≥90% ✅
-  （新增 `audit.py` 87%；`cli.py` 60% 为最大缺口，已由离线入口测试覆盖，非慢速管线）
+- `ashare_quant.automation` = **(3964−352)/3964 = 91.12%**，门槛 ≥90% ✅
+- （新增 `audit.py` 87%；`cli.py` 60% 为最大缺口，已由离线入口测试覆盖，非慢速管线）
 
 ## 4. 真实每日端到端测试
 
@@ -66,7 +74,7 @@
 
 ## 12. 编码扫描结果
 
-- 扫描范围：docs/phase-4-automation.md、config/automation.default.yaml、scripts/*.ps1、src/ashare_quant/automation/*.py、tests/test_fr*.py、tests/test_phase4_automation.py、reports/phase-4/**
+- 扫描范围：docs/**/*.md、config/**/*.yaml、config/**/*.yml、scripts/*.ps1、src/ashare_quant/automation/*.py、tests/test_fr*.py、tests/test_phase4_automation.py、reports/phase-4/**
 - **files=79 / garble=0 / utf8-decode-fail=0 / json-parse-fail=0**（四类均为 0）
 - `tests/test_fr22_encoding.py` 锁定该保证（含合成每日/每周报告生成的 UTF-8 校验）
 
@@ -83,7 +91,7 @@
 
 ## 结论
 
-FR-19/20/21/22/23/24/25 全部完成；全量测试 1330 全绿；双门槛覆盖率达标
-（TOTAL 91%、automation 91.1%）；编码与密钥扫描零问题；双跑字节一致。
+FR-19/20/21/22/23/24/25 全部完成；全量测试 1327 全绿；双门槛覆盖率达标
+（TOTAL 91%、automation 91.12%）；编码与密钥扫描零问题；双跑字节一致。
 
-**等待 Codex Gate 4A 第二轮审核，PR #7 不得合并。**
+**等待 Codex Gate 4A 最终复审，PR 不得合并。**

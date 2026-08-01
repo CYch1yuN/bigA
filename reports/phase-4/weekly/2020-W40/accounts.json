@@ -1,7 +1,7 @@
 {
   "week_key": "2020-W40",
   "as_of_date": "2020-10-03",
-  "run_id": "weekly-20201003-76a2f6398dd4fbd2",
+  "run_id": "weekly-20201003-9f62c24bd5fe0864",
   "state_mutated": false,
   "equity": {
     "paper-steady": {
@@ -87,7 +87,7 @@
       "cash": "1000.00",
       "positions": [],
       "as_of_date": "2020-10-02",
-      "last_run_id": "daily-20201002-967c9f92f76750e1",
+      "last_run_id": "daily-20201002-5371239a4d71421b",
       "observation_days": 5,
       "history": [
         {
@@ -95,7 +95,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200928-f0bdd9dec4b66025",
+          "run_id": "daily-20200928-f7c2c53bd648500e",
           "positions": 0
         },
         {
@@ -103,7 +103,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200929-9633f1046f7a0905",
+          "run_id": "daily-20200929-bfa0d157d62ccecb",
           "positions": 0
         },
         {
@@ -111,7 +111,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200930-2a30fec5f54a761d",
+          "run_id": "daily-20200930-528b2f3731731534",
           "positions": 0
         },
         {
@@ -119,7 +119,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20201001-d9da42bdcd227b69",
+          "run_id": "daily-20201001-71595a6e8e76366c",
           "positions": 0
         },
         {
@@ -127,7 +127,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20201002-967c9f92f76750e1",
+          "run_id": "daily-20201002-5371239a4d71421b",
           "positions": 0
         }
       ],
@@ -144,7 +144,7 @@
       "cash": "1000.00",
       "positions": [],
       "as_of_date": "2020-10-02",
-      "last_run_id": "daily-20201002-967c9f92f76750e1",
+      "last_run_id": "daily-20201002-5371239a4d71421b",
       "observation_days": 5,
       "history": [
         {
@@ -152,7 +152,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200928-f0bdd9dec4b66025",
+          "run_id": "daily-20200928-f7c2c53bd648500e",
           "positions": 0
         },
         {
@@ -160,7 +160,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200929-9633f1046f7a0905",
+          "run_id": "daily-20200929-bfa0d157d62ccecb",
           "positions": 0
         },
         {
@@ -168,7 +168,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20200930-2a30fec5f54a761d",
+          "run_id": "daily-20200930-528b2f3731731534",
           "positions": 0
         },
         {
@@ -176,7 +176,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20201001-d9da42bdcd227b69",
+          "run_id": "daily-20201001-71595a6e8e76366c",
           "positions": 0
         },
         {
@@ -184,7 +184,7 @@
           "cash": "1000.00",
           "position_value": "0.00",
           "total_equity": "1000.00",
-          "run_id": "daily-20201002-967c9f92f76750e1",
+          "run_id": "daily-20201002-5371239a4d71421b",
           "positions": 0
         }
       ],

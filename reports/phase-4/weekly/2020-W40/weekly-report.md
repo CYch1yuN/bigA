@@ -13,32 +13,33 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 运行标识 | `weekly-20201003-76a2f6398dd4fbd2` |
+| 运行标识 | `weekly-20201003-9f62c24bd5fe0864` |
 | 任务类型 | weekly |
 | 业务日 | 2020-10-03 |
 | 终态 | **成功** (`SUCCESS`) |
 | 退出码 | 0 |
 | 尝试次数 | 1 |
-| 代码提交 | `7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d` |
-| 配置哈希 | `5abdf662f72f3b6e` |
-| 输入哈希 | `9a66973963aa3378` |
-| 开始时间 | 2026-08-01 18:59:53.953639 |
-| 结束时间 | 2026-08-01 18:59:53.981168 |
-| 结论 | 每周汇总完成：2020-W40 覆盖 5/6 个交易日，模拟成交 0 笔，新增研究信号 0 条，观察窗口 5/60 交易日，归档 0 个目录，跑批缺口 1 天/异常 0 天（需人工补跑）；全部为模拟账户记录，未连接券商、未涉及真实资金 |
+| 代码提交 | `544f20aca1d8602cda98fd2676a5cb2695a271f1` |
+| 配置哈希 | `407d5f82c815276b` |
+| 输入哈希 | `35bc76fb825ecd69` |
+| 开始时间 | 2026-08-02 01:11:55.131101 |
+| 结束时间 | 2026-08-02 01:11:55.228108 |
+| 结论 | 每周汇总完成：2020-W40 覆盖 5/5 个交易日，模拟成交 0 笔，新增研究信号 1 条，观察窗口 5/60 交易日，归档 0 个目录；全部为模拟账户记录，未连接券商、未涉及真实资金 |
 
 ## 步骤明细
 
 | # | 步骤 | 状态 | 耗时(s) | 说明 |
 | --- | --- | --- | --- | --- |
-| 1 | `lock` | OK | 0.001 | acquired=True, reason=成功获取锁, stole_stale=False, holder=7项 |
-| 2 | `preflight` | OK | 0.000997 | accounts=2项, live_trading_enabled=False, broker_connected=False, mutates_account_state=False |
-| 3 | `calendar` | OK | 0.0 | source=synthetic-calendar, first_date=2020-01-02, last_date=2020-10-07, trading_day_count=6 |
-| 4 | `collect_runs` | OK | 0.003998 | expected_trading_days=6, records_found=5, signals=0, orders=0 |
-| 5 | `coverage_audit` | OK | 0.001003 | expected_trading_days=6, succeeded_days=5, missing_days=1项, unhealthy_days=0项 |
-| 6 | `account_review` | OK | 0.001505 | accounts=2, uninitialized=0项, weekly_return_pct=2项, state_written=False |
-| 7 | `observation_review` | OK | 0.001007 | accounts_reviewed=2, observation_completed=0项, live_trading_authorized=False, requires_independent_review=True |
-| 8 | `archive` | OK | 0.00201 | enabled=True, archived_count=0, archived_bytes=0, pruned_batches=0项 |
-| 9 | `artifacts` | OK | 0.010499 | files=4项, dry_run=False |
+| 1 | `lock` | OK | 0.001001 | acquired=True, reason=成功获取锁, stole_stale=False, holder=7项 |
+| 2 | `preflight` | OK | 0.000999 | accounts=2项, live_trading_enabled=False, broker_connected=False, mutates_account_state=False |
+| 3 | `calendar` | OK | 0.00121 | source=synthetic-calendar, first_date=2020-01-02, last_date=2020-10-07, trading_day_count=5 |
+| 4 | `collect_runs` | OK | 0.004 | expected_trading_days=5, records_found=5, signals=1, orders=0 |
+| 5 | `coverage_audit` | OK | 0.000999 | expected_trading_days=5, succeeded_days=5, missing_days=0项, unhealthy_days=0项 |
+| 6 | `weekly_research` | OK | 0.060562 | ran=True, skipped_reason=None, error=None, insufficient_sample=True |
+| 7 | `account_review` | OK | 0.001001 | accounts=2, uninitialized=0项, weekly_return_pct=2项, state_written=False |
+| 8 | `observation_review` | OK | 0.000504 | accounts_reviewed=2, observation_completed=0项, live_trading_authorized=False, requires_independent_review=True |
+| 9 | `archive` | OK | 0.002007 | enabled=True, archived_count=0, archived_bytes=0, pruned_batches=0项 |
+| 10 | `artifacts` | OK | 0.017514 | files=4项, dry_run=False |
 
 ## 本周每日运行回顾
 
@@ -48,19 +49,19 @@
 | 2020-09-29 | 成功 | 0 | 1 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 2/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
 | 2020-09-30 | 成功 | 0 | 1 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 3/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
 | 2020-10-01 | 成功 | 0 | 1 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 4/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
-| 2020-10-02 | 成功 | 0 | 1 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 5/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
+| 2020-10-02 | 成功 | 0 | 1 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 1 条，观察窗口 5/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
 
 ## 本周统计
 
 | 指标 | 值 |
 | --- | --- |
 | ISO 周 | 2020-W40 |
-| 应跑交易日 | 6 |
+| 应跑交易日 | 5 |
 | 成功跑批 | 5 |
-| 缺失跑批 | 1 |
+| 缺失跑批 | 0 |
 | 异常跑批 | 0 |
-| 跑批覆盖率 | 83.33% |
-| 新增研究信号 | 0 |
+| 跑批覆盖率 | 100.0% |
+| 新增研究信号 | 1 |
 | 模拟订单记录 | 0 |
 | 模拟成交 | 0 |
 | 模拟拒单 | 0 |
@@ -109,10 +110,4 @@
 
 ## 跑批缺口
 
-**本周跑批存在缺口，覆盖率 83.33%（5/6）。**
-
-缺失运行记录的交易日：
-
-- `2020-10-03`：无任何运行记录，建议 `automation rerun --date 2020-10-03`
-
-> 缺口不会导致每周汇总失败——汇总的职责正是把缺口暴露出来。请人工确认原因后补跑。
+本周 5 个交易日全部成功跑批，无缺口。

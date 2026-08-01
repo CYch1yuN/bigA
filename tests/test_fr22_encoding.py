@@ -94,9 +94,11 @@ SELF_FILE = "tests/test_fr22_encoding.py"
 
 def _collect_target_files() -> list[Path]:
     files: list[Path] = []
-    # docs / config
-    files.append(ROOT / "docs" / "phase-4-automation.md")
-    files.append(ROOT / "config" / "automation.default.yaml")
+    # docs/**/*.md（含 gate4a-r2-verification.md 等全部文档）
+    files.extend(sorted((ROOT / "docs").rglob("*.md")))
+    # config/**/*.yaml 与 config/**/*.yml
+    files.extend(sorted((ROOT / "config").rglob("*.yaml")))
+    files.extend(sorted((ROOT / "config").rglob("*.yml")))
     # scripts/*.ps1
     files.extend(sorted((ROOT / "scripts").glob("*.ps1")))
     # src/ashare_quant/automation/*.py
@@ -106,10 +108,12 @@ def _collect_target_files() -> list[Path]:
     files.extend(sorted((ROOT / "tests").glob("test_fr*.py")))
     # reports/phase-4/**/*
     files.extend(sorted((ROOT / "reports" / "phase-4").rglob("*")))
-    # 过滤：仅保留真实存在的普通文件，跳过目录与字节码缓存
+    # 过滤：仅保留真实存在的普通文件，跳过目录、字节码缓存与二进制产物
     out = [
         f for f in files
-        if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc"
+        if f.is_file()
+        and "__pycache__" not in f.parts
+        and f.suffix not in {".pyc", ".parquet"}
     ]
     # 去重
     seen: set[Path] = set()
@@ -165,6 +169,17 @@ def test_official_files_clean_utf8_and_required_terms():
     # 4) 关键可读中文术语必须存在
     missing = [t for t in REQUIRED_TERMS if t not in combined]
     assert not missing, "缺失关键中文术语：\n" + "\n".join(missing)
+
+
+def test_gate4a_verification_report_clean_and_has_terms():
+    """Gate 4A 第二轮复验报告必须是干净 UTF-8，且包含关键验收措辞。"""
+    report = ROOT / "docs" / "gate4a-r2-verification.md"
+    assert report.exists(), "缺少 docs/gate4a-r2-verification.md"
+    text = report.read_text(encoding="utf-8")
+    for term in ("Gate 4A 第二轮复验报告", "全量测试", "覆盖率", "等待 Codex"):
+        assert term in text, f"复验报告缺少措辞: {term}"
+    for frag in GARBLE_FRAGMENTS:
+        assert frag not in text, f"复验报告出现乱码片段 {frag!r}"
 
 
 # ---------------------------------------------------------------------- #

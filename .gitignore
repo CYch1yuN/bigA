@@ -45,3 +45,7 @@ reports/phase-3-run2/
 # --- 系统 ---
 .DS_Store
 Thumbs.db
+
+# --- Phase 4 示例审计产物（小型合成，允许提交） ---
+!reports/phase-4/**/*.parquet
+!research_data/*.parquet

@@ -32,6 +32,7 @@ from ashare_quant.automation.audit import (  # noqa: E402
     FILL_COLUMNS,
     ORDER_COLUMNS,
     SIGNAL_COLUMNS,
+    _manifest_files,
     verify_manifest,
 )
 from ashare_quant.automation.calendar import TradingCalendar  # noqa: E402
@@ -77,6 +78,23 @@ AUDIT_FILES = [
     "equity.parquet",
     "quality-summary.json",
 ]
+
+
+# ---------------------------------------------------------------------- #
+# 8) manifest 自引用回归：重跑覆盖时清单不得包含 manifest 自身
+# ---------------------------------------------------------------------- #
+
+def test_manifest_files_excludes_self(tmp_path):
+    """manifest.json 不得出现在自己的文件清单里（否则重跑后哈希不可复算）。"""
+    d = tmp_path / "run"
+    d.mkdir()
+    (d / "run.json").write_text("{}", encoding="utf-8")
+    (d / "daily-report.md").write_text("x", encoding="utf-8")
+    # 模拟重跑：磁盘上已存在上一次的 manifest.json
+    (d / "manifest.json").write_text("{}", encoding="utf-8")
+    names = {p.name for p in _manifest_files(d)}
+    assert "manifest.json" not in names
+    assert {"run.json", "daily-report.md"} <= names
 
 
 # ---------------------------------------------------------------------- #

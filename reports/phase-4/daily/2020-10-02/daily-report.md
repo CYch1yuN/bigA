@@ -13,44 +13,44 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 运行标识 | `daily-20201002-967c9f92f76750e1` |
+| 运行标识 | `daily-20201002-5371239a4d71421b` |
 | 任务类型 | daily |
 | 业务日 | 2020-10-02 |
 | 终态 | **成功** (`SUCCESS`) |
 | 退出码 | 0 |
 | 尝试次数 | 1 |
-| 代码提交 | `7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d` |
-| 配置哈希 | `5abdf662f72f3b6e` |
-| 输入哈希 | `731eaf7d346a36d6` |
-| 开始时间 | 2026-08-01 18:59:53.651099 |
-| 结束时间 | 2026-08-01 18:59:53.786857 |
-| 结论 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 5/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
+| 代码提交 | `544f20aca1d8602cda98fd2676a5cb2695a271f1` |
+| 配置哈希 | `407d5f82c815276b` |
+| 输入哈希 | `02e0c037a20c1784` |
+| 开始时间 | 2026-08-02 01:10:12.841536 |
+| 结束时间 | 2026-08-02 01:10:13.059141 |
+| 结论 | 每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 1 条，观察窗口 5/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金 |
 
 ## 步骤明细
 
 | # | 步骤 | 状态 | 耗时(s) | 说明 |
 | --- | --- | --- | --- | --- |
-| 1 | `lock` | OK | 0.000999 | acquired=True, reason=成功获取锁, stole_stale=False, holder=7项 |
-| 2 | `preflight` | OK | 0.0 | accounts=2项, live_trading_enabled=False, broker_connected=False, eligibility=2项 |
-| 3 | `calendar` | OK | 0.0 | source=synthetic-calendar, first_date=2020-01-02, last_date=2020-10-07, trading_day_count=201 |
-| 4 | `market_data` | OK | 0.001997 | source=synthetic-research-samples, online=False, synthetic=True, rows=1546 |
-| 5 | `quality_gate` | OK | 0.032539 | critical=0, warning=0, total=0, has_critical=False |
-| 6 | `settle_pending` | OK | 0.000989 | pending_signal_date=2020-10-01, pending_count=0, filled=0, rejected=0 |
-| 7 | `universe` | OK | 0.001 | symbols=8, security_master_available=True, filter_kwargs=2项 |
-| 8 | `generate_signals` | OK | 0.065593 | signal_date=2020-10-02, fill_date=2020-10-03, count=0, by_track=2项 |
-| 9 | `stage_pending` | OK | 0.003042 | written=True, count=0, path=pending-signals.json |
-| 10 | `mark_to_market` | OK | 0.003008 | priced_symbols=8, accounts=2, persisted=True, observation=2项 |
-| 11 | `artifacts` | OK | 0.010516 | files=4项, dry_run=False |
+| 1 | `lock` | OK | 0.001001 | acquired=True, reason=成功获取锁, stole_stale=False, holder=7项 |
+| 2 | `preflight` | OK | 0.000999 | accounts=2项, live_trading_enabled=False, broker_connected=False, eligibility=2项 |
+| 3 | `calendar` | OK | 0.001002 | source=synthetic-calendar, first_date=2020-01-02, last_date=2020-10-07, trading_day_count=200 |
+| 4 | `market_data` | OK | 0.003031 | source=synthetic-research-samples, online=False, synthetic=True, rows=1160 |
+| 5 | `quality_gate` | OK | 0.03276 | critical=0, warning=0, total=0, has_critical=False |
+| 6 | `settle_pending` | OK | 0.001 | pending_signal_date=2020-10-02, pending_count=0, filled=0, rejected=0 |
+| 7 | `universe` | OK | 0.000504 | symbols=8, security_master_available=True, filter_kwargs=2项 |
+| 8 | `generate_signals` | OK | 0.137594 | signal_date=2020-10-02, fill_date=2020-10-05, count=1, by_track=2项 |
+| 9 | `stage_pending` | OK | 0.004002 | written=True, count=1, path=pending-signals.json |
+| 10 | `mark_to_market` | OK | 0.00551 | priced_symbols=8, accounts=2, persisted=True, observation=2项 |
+| 11 | `artifacts` | OK | 0.015736 | files=4项, dry_run=False |
 
 ## 数据出处
 
 | 项目 | 值 |
 | --- | --- |
 | 数据源 | `synthetic-research-samples` (**非线上抓取**、**合成样本**) |
-| 行数 | 1546 |
+| 行数 | 1160 |
 | 标的数 | 8 |
-| 覆盖区间 | 2020-01-02 ~ 2020-10-02 |
-| 加载时间 | 2026-08-01T18:59:53.657622 |
+| 覆盖区间 | 2020-03-16 ~ 2020-10-02 |
+| 加载时间 | 2026-08-02T01:10:12.850567 |
 
 数据源备注：
 
@@ -62,12 +62,16 @@
 | --- | --- |
 | 严重问题 | **0** |
 | 警告 | 0 |
-| 检查行数 | 1546 |
+| 检查行数 | 1160 |
 | 是否阻断下游 | 否 |
 
 ## 研究信号
 
-本交易日无新增研究信号（含稳健轨 HOLD_CASH 情形）。
+| 轨道 | 标的 | 方向 | 数量 | 信号日 | 依据 |
+| --- | --- | --- | --- | --- | --- |
+| — | `000001` | BUY | 100 | 2020-10-02 | 稳健轨: 得分3.2413, 买入000001 |
+
+> 上表为**研究信号**，不是操作建议。信号仅用于推进模拟账户。
 
 ## 模拟订单
 

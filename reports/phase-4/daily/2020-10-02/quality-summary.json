@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task_type": "daily",
+  "summary": {
+    "critical": 0,
+    "warning": 0,
+    "rows_checked": 1160
+  },
+  "has_critical": false,
+  "issues_count": 0
+}

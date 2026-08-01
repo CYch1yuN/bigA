@@ -1,9 +1,22 @@
 {
   "week_key": "2020-W40",
   "as_of_date": "2020-10-03",
-  "run_id": "weekly-20201003-76a2f6398dd4fbd2",
+  "run_id": "weekly-20201003-9f62c24bd5fe0864",
   "simulated": true,
   "live_trading": false,
   "note": "本周研究信号汇总，非投资建议、非交易指令；全部信号仅用于推进模拟账户",
-  "signals": []
+  "signals": [
+    {
+      "track": "steady",
+      "signal_date": "2020-10-02",
+      "symbol": "000001",
+      "side": "BUY",
+      "quantity": 100,
+      "reason": "稳健轨: 得分3.2413, 买入000001",
+      "signal_hash": "911b65cf70b16fbc",
+      "simulated": true,
+      "strategy_track": "steady",
+      "as_of_date": "2020-10-02"
+    }
+  ]
 }

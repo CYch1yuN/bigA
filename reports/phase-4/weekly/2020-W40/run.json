@@ -1,43 +1,54 @@
 {
   "schema_version": 1,
-  "run_id": "weekly-20201003-76a2f6398dd4fbd2",
+  "run_id": "weekly-20201003-9f62c24bd5fe0864",
   "task_type": "weekly",
   "as_of_date": "2020-10-03",
   "state": "SUCCESS",
   "exit_code": 0,
-  "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
-  "config_hash": "5abdf662f72f3b6e",
-  "input_hash": "9a66973963aa3378",
-  "started_at": "2026-08-01T18:59:53",
-  "finished_at": "2026-08-01T18:59:53",
-  "duration_seconds": 0.027529,
+  "code_commit": "544f20aca1d8602cda98fd2676a5cb2695a271f1",
+  "config_hash": "407d5f82c815276b",
+  "input_hash": "35bc76fb825ecd69",
+  "started_at": "2026-08-02T01:11:55",
+  "finished_at": "2026-08-02T01:11:55",
+  "duration_seconds": 0.097007,
   "attempt": 1,
-  "message": "每周汇总完成：2020-W40 覆盖 5/6 个交易日，模拟成交 0 笔，新增研究信号 0 条，观察窗口 5/60 交易日，归档 0 个目录，跑批缺口 1 天/异常 0 天（需人工补跑）；全部为模拟账户记录，未连接券商、未涉及真实资金",
+  "message": "每周汇总完成：2020-W40 覆盖 5/5 个交易日，模拟成交 0 笔，新增研究信号 1 条，观察窗口 5/60 交易日，归档 0 个目录；全部为模拟账户记录，未连接券商、未涉及真实资金",
   "artifacts": [
     "reports/phase-4/weekly/2020-W40/signals.json",
     "reports/phase-4/weekly/2020-W40/simulated-orders.json",
     "reports/phase-4/weekly/2020-W40/accounts.json",
-    "reports/phase-4/weekly/2020-W40/weekly-summary.json"
+    "reports/phase-4/weekly/2020-W40/weekly-summary.json",
+    "reports/phase-4/weekly/2020-W40/weekly-report.md",
+    "reports/phase-4/weekly/2020-W40/run-report.md",
+    "reports/phase-4/weekly/2020-W40/signals.parquet",
+    "reports/phase-4/weekly/2020-W40/orders.parquet",
+    "reports/phase-4/weekly/2020-W40/fills.parquet",
+    "reports/phase-4/weekly/2020-W40/equity.parquet",
+    "reports/phase-4/weekly/2020-W40/account-snapshot.json",
+    "reports/phase-4/weekly/2020-W40/quality-summary.json",
+    "reports/phase-4/weekly/2020-W40/run-summary.json",
+    "reports/phase-4/weekly/2020-W40/run.json",
+    "reports/phase-4/weekly/2020-W40/manifest.json"
   ],
   "steps": [
     {
       "name": "lock",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.001,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.001001,
       "detail": {
         "acquired": true,
         "reason": "成功获取锁",
         "stole_stale": false,
         "holder": {
-          "pid": 61952,
+          "pid": 36804,
           "hostname": "USER-20250711OM",
           "task_type": "weekly",
           "as_of_date": "2020-10-03",
-          "started_at": "2026-08-01T18:59:53",
-          "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
-          "run_id": "weekly-20201003-76a2f6398dd4fbd2"
+          "started_at": "2026-08-02T01:11:55",
+          "code_commit": "544f20aca1d8602cda98fd2676a5cb2695a271f1",
+          "run_id": "weekly-20201003-9f62c24bd5fe0864"
         }
       },
       "error": null
@@ -45,9 +56,9 @@
     {
       "name": "preflight",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.000997,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.000999,
       "detail": {
         "accounts": [
           "paper-steady",
@@ -66,14 +77,14 @@
     {
       "name": "calendar",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.0,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.00121,
       "detail": {
         "source": "synthetic-calendar",
         "first_date": "2020-01-02",
         "last_date": "2020-10-07",
-        "trading_day_count": 6,
+        "trading_day_count": 5,
         "generated_at": null,
         "week_key": "2020-W40",
         "week_start": "2020-09-28",
@@ -84,56 +95,101 @@
           "2020-09-29",
           "2020-09-30",
           "2020-10-01",
-          "2020-10-02",
-          "2020-10-03"
+          "2020-10-02"
         ],
-        "as_of_is_trading_day": true
+        "as_of_is_trading_day": false
       },
       "error": null
     },
     {
       "name": "collect_runs",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.003998,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.004,
       "detail": {
-        "expected_trading_days": 6,
+        "expected_trading_days": 5,
         "records_found": 5,
-        "signals": 0,
+        "signals": 1,
         "orders": 0,
-        "artifact_dirs": 5
+        "artifact_dirs": 1
       },
       "error": null
     },
     {
       "name": "coverage_audit",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.001003,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.000999,
       "detail": {
-        "expected_trading_days": 6,
+        "expected_trading_days": 5,
         "succeeded_days": 5,
-        "missing_days": [
-          "2020-10-03"
-        ],
+        "missing_days": [],
         "unhealthy_days": [],
         "state_counts": {
           "SUCCESS": 5
         },
         "calendar_disagreement_days": 0,
-        "coverage_pct": 83.33,
-        "coverage_ok": false
+        "coverage_pct": 100.0,
+        "coverage_ok": true
+      },
+      "error": null
+    },
+    {
+      "name": "weekly_research",
+      "status": "OK",
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.060562,
+      "detail": {
+        "ran": true,
+        "skipped_reason": null,
+        "error": null,
+        "insufficient_sample": true,
+        "folds": 0,
+        "steady_eligibility": "INSUFFICIENT_RESEARCH_SAMPLE",
+        "aggressive_eligibility": "SIMULATION_ONLY",
+        "steady_total_return": null,
+        "steady_max_drawdown": null,
+        "steady_sharpe": null,
+        "aggressive_total_return": null,
+        "aggressive_max_drawdown": null,
+        "aggressive_sharpe": null,
+        "stress": {
+          "steady": {},
+          "aggressive": {}
+        },
+        "monte_carlo": {},
+        "regime": {},
+        "perturbation": {
+          "steady": {},
+          "aggressive": {}
+        },
+        "data_hash": "d4f876e47c161188f7e62c0debae4575119ab87e07a79adf7c4aa3aa6df7908e",
+        "config_hash": "2157dc98bdecdb70dfd3d30421bb9e80740175d814439df2cfdff5f032d94965",
+        "code_commit": null,
+        "candidate_counts": {
+          "steady": 81,
+          "aggressive": 729
+        },
+        "limitations": [
+          "样本不足，标记为 INSUFFICIENT_RESEARCH_SAMPLE",
+          "Phase 3 仅用于模拟研究，不构成投资建议或实盘依据",
+          "激进轨永远为 SIMULATION_ONLY，不输出实盘资格",
+          "蒙特卡洛结果仅用于概率研究，不构成收益承诺",
+          "历史状态表按 point-in-time join，不使用当前状态替代历史状态",
+          "参数只在对应训练/验证数据上选择，选定后冻结运行测试期"
+        ]
       },
       "error": null
     },
     {
       "name": "account_review",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.001505,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.001001,
       "detail": {
         "accounts": 2,
         "uninitialized": [],
@@ -148,9 +204,9 @@
     {
       "name": "observation_review",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.001007,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.000504,
       "detail": {
         "accounts_reviewed": 2,
         "observation_completed": [],
@@ -163,9 +219,9 @@
     {
       "name": "archive",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.00201,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.002007,
       "detail": {
         "enabled": true,
         "archived_count": 0,
@@ -179,9 +235,9 @@
     {
       "name": "artifacts",
       "status": "OK",
-      "started_at": "2026-08-01T18:59:53",
-      "finished_at": "2026-08-01T18:59:53",
-      "duration_seconds": 0.010499,
+      "started_at": "2026-08-02T01:11:55",
+      "finished_at": "2026-08-02T01:11:55",
+      "duration_seconds": 0.017514,
       "detail": {
         "files": [
           "signals.json",
