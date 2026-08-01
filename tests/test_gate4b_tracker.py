@@ -360,6 +360,64 @@ def test_calendar_coverage_insufficient(tmp_path: Path) -> None:
     assert summary["observation_progress"] < 60
 
 
+def test_first_record_holiday_skipped_normalizes_start(tmp_path: Path) -> None:
+    """最早运行记录是节假日（非交易日）产生的 SKIPPED 记录 → 起点归一化到下一交易日。
+
+    若直接以该非交易日为第一个预期交易日，会因「非 SUCCESS」永久停在 0。
+    """
+    config = _config(tmp_path)
+    cal = _weekday_calendar(60, start=date(2020, 1, 6))  # 周一起
+    # 节假日（日历外的某天，如 2020-01-04 周六前的法定假）产生 SKIPPED 记录
+    holiday = date(2020, 1, 3)  # 周五，不在合成日历内（模拟节假日）
+    _seed_day(config, holiday, state=RunState.SKIPPED_NON_TRADING_DAY)
+    # 之后 60 个工作日全部 SUCCESS
+    _seed_ok_window(config, cal, 60, start=cal.dates[0])
+    summary = g4b._track_real(config, calendar=cal)
+    # 起点归一化到第一个交易日 2020-01-06，60 个工作日全部通过 → 60/60
+    assert summary["start_date"] == "2020-01-06"
+    assert summary["observation_progress"] == 60
+    assert summary["consecutive_trading_days"] == 60
+    assert summary["violations"] == []
+
+
+def test_skipped_holiday_only_no_success_records(tmp_path: Path) -> None:
+    """只有节假日 SKIPPED 记录、没有 SUCCESS 交易日 → 进度 0，且非交易日记录不判违规。"""
+    config = _config(tmp_path)
+    cal = _weekday_calendar(60, start=date(2020, 1, 6))
+    holiday = date(2020, 1, 3)
+    _seed_day(config, holiday, state=RunState.SKIPPED_NON_TRADING_DAY)
+    summary = g4b._track_real(config, calendar=cal)
+    assert summary["observation_progress"] == 0
+    assert summary["real_success_trading_days"] == 0
+    assert summary["start_date"] == "2020-01-06"  # 已归一化到下一交易日
+    # 归一化后首个交易日（2020-01-06）无运行记录 → 运行记录缺失（违规中断），
+    # 但节假日 SKIPPED 记录本身不是「非 SUCCESS」违规（它不在预期序列里）
+    assert not any("非 SUCCESS" in v for v in summary["violations"])
+    assert any("运行记录缺失" in v for v in summary["violations"])
+
+
+def test_unique_key_and_order_id_use_independent_sets(tmp_path: Path) -> None:
+    """unique_key 与 order_id 用独立集合：跨字段偶然同值不得误报为重复订单。"""
+    config = _config(tmp_path)
+    cal = _weekday_calendar(60)
+    # 订单 A：unique_key=uk-a / order_id=oid-a
+    # 订单 B：unique_key=oid-a（与 A 的 order_id 同值）/ order_id=uk-b
+    # 若共用一个集合，会误判 A.order_id 与 B.unique_key 冲突 → 误报重复订单。
+    orders = [
+        {"order_id": "oid-a", "unique_key": "uk-a", "status": "FILLED"},
+        {"order_id": "uk-b", "unique_key": "oid-a", "status": "FILLED"},
+    ]
+
+    def _two_orders(cfg, d):
+        _seed_day(cfg, d, orders=orders)
+
+    _seed_ok_window(config, cal, 60, mutate={5: _two_orders})
+    summary = g4b._track_real(config, calendar=cal)
+    # 无真正重复：unique_key 集合 {uk-a, oid-a} 与 order_id 集合 {oid-a, uk-b} 均唯一
+    assert summary["observation_progress"] == 60
+    assert summary["violations"] == []
+
+
 def test_render_md_track_status_text(tmp_path: Path) -> None:
     """渲染的 Markdown 必须如实反映进度与复核口径。"""
     config = _config(tmp_path)

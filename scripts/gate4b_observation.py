@@ -201,14 +201,17 @@ def _track_real(
 ) -> dict[str, Any]:
     """真实自动任务进度：用交易日历生成预期序列，逐日复核运行记录与审计产物。
 
-    从**最早的每日运行记录**（真实任务启动日）起，按交易日历生成连续
-    ``observation_target`` 个预期交易日；对每个预期交易日逐日复核：
+    启动日 = 最早运行记录所在日期**归一化到交易日**：当天是交易日则用当天，
+    否则取其后最近交易日（节假日/周末产生的 ``SKIPPED_NON_TRADING_DAY``
+    记录不是预期交易日，不能作为观察起点，否则会永久停在 0）。随后按交易日历
+    生成连续 ``observation_target`` 个预期交易日；对每个预期交易日逐日复核：
 
     1. 运行记录存在且 ``SUCCESS`` / exit 0（缺失或失败 = 违规）；
     2. 报告目录产物齐全（run.json / manifest.json / accounts.json /
        simulated-orders.json / signals.json）；
     3. 每日 ``manifest.json`` 哈希可复算（``verify_manifest``）；
-    4. 全窗口订单 ``unique_key`` / ``order_id`` 无重复（无重复订单）；
+    4. 全窗口订单 ``unique_key`` 与 ``order_id`` 各自唯一（两个独立集合，
+       避免跨字段偶然同值误报；无重复订单）；
     5. 每日账务恒等式 cash + position_value == total_equity（无无法解释的
        权益变化）；现金非负。
 
@@ -251,8 +254,32 @@ def _track_real(
             "violations": [],
         }
 
-    # 启动日 = 最早运行记录；用交易日历从启动日起取连续 N 个预期交易日。
-    start_date = min(by_date)
+    # 启动日 = 最早运行记录；归一化到交易日。
+    # 注意：任务在节假日/周末也可能留下 SKIPPED_NON_TRADING_DAY 记录（非交易日），
+    # 它**不是**预期交易日——若直接以它为起点，会因「非 SUCCESS」永久停在 0。
+    # 规则：最早运行日期当天若是交易日 → 用当天；否则 → 取其后最近交易日。
+    earliest = min(by_date)
+    try:
+        start_date = calendar.next_trading_day(earliest, inclusive=True)
+    except CalendarUnavailableError:
+        return {
+            "mode": "track",
+            "calendar_error": (
+                f"最早运行记录 {earliest.isoformat()} 无法归一到交易日"
+                f"（日历范围 [{calendar.first_date.isoformat()}, "
+                f"{calendar.last_date.isoformat()}]，来源: {calendar.source}）"
+            ),
+            "observation_progress": 0,
+            "observation_target": observation_target,
+            "real_success_trading_days": sum(
+                1 for r in records if r.state is RunState.SUCCESS
+            ),
+            "consecutive_trading_days": 0,
+            "state_dir": str(config.state_dir),
+            "start_date": earliest.isoformat(),
+            "last_date": None,
+            "violations": [f"{earliest.isoformat()}: 启动日无法归一到交易日"],
+        }
     expected_days: list[date] = []
     d = start_date
     try:
@@ -263,7 +290,8 @@ def _track_real(
         # 日历覆盖不足（真实部署中日历通常延伸到当前日期，属正常）。
         pass
 
-    seen_orders: set[str] = set()
+    seen_unique_keys: set[str] = set()
+    seen_order_ids: set[str] = set()
     violations: list[str] = []
     checked: list[dict[str, Any]] = []
     consecutive = 0
@@ -321,7 +349,8 @@ def _track_real(
                 except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
                     day_ok = False
                     issues.append(f"accounts.json 读取失败: {exc}")
-                # 重复订单（unique_key / order_id 全窗口唯一）
+                # 重复订单（unique_key 与 order_id 各自全窗口唯一；用两个独立集合，
+                # 避免某订单的 unique_key 与另一订单的 order_id 偶然同值造成误报）
                 try:
                     ords = json.loads(
                         (rep_dir / "simulated-orders.json").read_text(
@@ -329,14 +358,18 @@ def _track_real(
                         )
                     )["orders"]
                     for o in ords:
-                        for key in ("unique_key", "order_id"):
-                            val = o.get(key)
-                            if val is None:
-                                continue
-                            if val in seen_orders:
+                        uk = o.get("unique_key")
+                        if uk is not None:
+                            if uk in seen_unique_keys:
                                 day_ok = False
-                                issues.append(f"重复订单 {key}={val}")
-                            seen_orders.add(val)
+                                issues.append(f"重复订单 unique_key={uk}")
+                            seen_unique_keys.add(uk)
+                        oid = o.get("order_id")
+                        if oid is not None:
+                            if oid in seen_order_ids:
+                                day_ok = False
+                                issues.append(f"重复订单 order_id={oid}")
+                            seen_order_ids.add(oid)
                 except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
                     day_ok = False
                     issues.append(f"simulated-orders.json 读取失败: {exc}")
