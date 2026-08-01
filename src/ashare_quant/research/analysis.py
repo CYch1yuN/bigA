@@ -738,6 +738,40 @@ class ResearchRunner:
         self._aggressive_candidates = aggressive_candidates
         self._engine = BacktestEngine()
         self._calc = MetricsCalculator()
+        self._hs300_dict: Optional[dict] = None
+
+    @property
+    def _hs300(self) -> dict:
+        """缓存沪深300收盘价字典。"""
+        if self._hs300_dict is None:
+            self._hs300_dict = dict(self._benchmark.hs300_close)
+        return self._hs300_dict
+
+    def _filter_quotes(
+        self,
+        quotes: pd.DataFrame,
+        start_date: date,
+        end_date: date,
+        buffer_days: int = 200,
+    ) -> pd.DataFrame:
+        """预过滤行情数据，只保留所需日期范围（含特征窗口缓冲）。
+
+        策略需要历史数据计算特征（如 MA(120)），因此保留 start_date
+        前 buffer_days 个交易日的数据。
+        """
+        dates = sorted(quotes["trade_date"].unique())
+        start_idx = 0
+        for i, d in enumerate(dates):
+            if pd.Timestamp(d).date() >= start_date:
+                start_idx = max(0, i - buffer_days)
+                break
+        end_idx = len(dates)
+        for i, d in enumerate(dates):
+            if pd.Timestamp(d).date() > end_date:
+                end_idx = i
+                break
+        relevant_dates = set(dates[start_idx:end_idx])
+        return quotes[quotes["trade_date"].isin(relevant_dates)].copy()
 
     def run(
         self,
@@ -938,7 +972,9 @@ class ResearchRunner:
 
         # 创建压力测试配置
         stress_configs = create_fee_stress_configs(self._bt_config)
-        hs300_dict = dict(self._benchmark.hs300_close)
+
+        # 预过滤行情数据
+        filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
 
         results: list[StressResult] = []
         for scenario, stress_config in stress_configs:
@@ -955,12 +991,12 @@ class ResearchRunner:
                     universe_filter=self._universe_filter,
                     trading_dates=test_dates,
                     lot_size=stress_config.lot_size,
-                    benchmark_hs300=hs300_dict,
+                    benchmark_hs300=self._hs300,
                 )
 
             try:
                 bt_result = self._engine.run(
-                    data=quotes,
+                    data=filtered_quotes,
                     strategy=strategy,
                     start_date=test_dates[0],
                     end_date=test_dates[-1],
@@ -1009,7 +1045,8 @@ class ResearchRunner:
         if not test_dates:
             return None
 
-        hs300_dict = dict(self._benchmark.hs300_close)
+        # 预过滤行情数据，大幅减少每次回测的数据量
+        filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
         calc = MetricsCalculator()
         all_results: list[dict[str, Any]] = []
 
@@ -1026,7 +1063,7 @@ class ResearchRunner:
                 )
                 try:
                     result = self._engine.run(
-                        data=quotes,
+                        data=filtered_quotes,
                         strategy=strategy,
                         start_date=test_dates[0],
                         end_date=test_dates[-1],
@@ -1060,11 +1097,11 @@ class ResearchRunner:
                     universe_filter=self._universe_filter,
                     trading_dates=test_dates,
                     lot_size=self._bt_config.lot_size,
-                    benchmark_hs300=hs300_dict,
+                    benchmark_hs300=self._hs300,
                 )
                 try:
                     result = self._engine.run(
-                        data=quotes,
+                        data=filtered_quotes,
                         strategy=strategy,
                         start_date=test_dates[0],
                         end_date=test_dates[-1],
@@ -1168,6 +1205,9 @@ class ResearchRunner:
         candidates = generate_steady_param_combinations(self._steady_candidates)
         val_results: list[tuple[SteadyParams, BacktestResult]] = []
 
+        # 预过滤行情数据，大幅减少每次回测的数据量
+        filtered_quotes = self._filter_quotes(quotes, val_dates[0], val_dates[-1])
+
         for params in candidates:
             strategy = SteadyStrategy(
                 params=params,
@@ -1177,7 +1217,7 @@ class ResearchRunner:
             )
             try:
                 result = self._engine.run(
-                    data=quotes,
+                    data=filtered_quotes,
                     strategy=strategy,
                     start_date=val_dates[0],
                     end_date=val_dates[-1],
@@ -1206,7 +1246,8 @@ class ResearchRunner:
         candidates = generate_aggressive_param_combinations(self._aggressive_candidates)
         val_results: list[tuple[AggressiveParams, BacktestResult]] = []
 
-        hs300_dict = dict(self._benchmark.hs300_close)
+        # 预过滤行情数据，大幅减少每次回测的数据量
+        filtered_quotes = self._filter_quotes(quotes, val_dates[0], val_dates[-1])
 
         for params in candidates:
             strategy = AggressiveStrategy(
@@ -1214,11 +1255,11 @@ class ResearchRunner:
                 universe_filter=self._universe_filter,
                 trading_dates=val_dates,
                 lot_size=self._bt_config.lot_size,
-                benchmark_hs300=hs300_dict,
+                benchmark_hs300=self._hs300,
             )
             try:
                 result = self._engine.run(
-                    data=quotes,
+                    data=filtered_quotes,
                     strategy=strategy,
                     start_date=val_dates[0],
                     end_date=val_dates[-1],
@@ -1245,7 +1286,8 @@ class ResearchRunner:
         if not test_dates:
             return None
 
-        hs300_dict = dict(self._benchmark.hs300_close)
+        # 预过滤行情数据
+        filtered_quotes = self._filter_quotes(quotes, test_dates[0], test_dates[-1])
 
         if track_type == TrackType.STEADY:
             strategy = SteadyStrategy(
@@ -1260,12 +1302,12 @@ class ResearchRunner:
                 universe_filter=self._universe_filter,
                 trading_dates=test_dates,
                 lot_size=self._bt_config.lot_size,
-                benchmark_hs300=hs300_dict,
+                benchmark_hs300=self._hs300,
             )
 
         try:
             return self._engine.run(
-                data=quotes,
+                data=filtered_quotes,
                 strategy=strategy,
                 start_date=test_dates[0],
                 end_date=test_dates[-1],
