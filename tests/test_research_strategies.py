@@ -1203,4 +1203,3 @@ class TestBuyQuantityCalc:
         assert aggressive_calc._calc_buy_quantity(10000, 5.0) == 1900
         assert aggressive_calc._calc_buy_quantity(1000, 10.0) == 0
         assert aggressive_calc._calc_buy_quantity(1000, 15.0) == 0
-
