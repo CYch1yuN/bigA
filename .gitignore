@@ -34,6 +34,8 @@ data/
 
 # --- 日志与生成产物 ---
 logs/
+# state/：运行状态、锁文件、真实 Gate 4B 观察进度——一律不得进入 Git
+state/
 # coverage.json 由测试生成，保留为报告输入
 reports/phase-1/coverage.json
 # 临时 CLI 双跑目录（验证用，不得忽略正式 reports/phase-2/）
