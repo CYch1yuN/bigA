@@ -241,6 +241,64 @@ class TestCanonicalConfig:
 
 
 # --------------------------------------------------------------------------- #
+# 4. 完整性守卫：禁止把短路研究（insufficient_sample）描述为完整研究
+# --------------------------------------------------------------------------- #
+
+
+def _is_complete_research(d: dict) -> bool:
+    """判定一次研究是否真正完成（Gate 4A 复审口径）。
+
+    仅当同时具备：有样本外折、非空压力测试、非空参数扰动、非空蒙特卡洛概率
+    分布时，才算"完整研究"。仅仅 ``candidate_counts`` 有值（81/729 配置）
+    而折数为 0 / MC 为空，属于短路运行，不得描述为完整研究。
+    """
+    return bool(
+        d.get("folds")
+        and d.get("monte_carlo")
+        and d.get("stress")
+        and d.get("perturbation")
+    )
+
+
+class TestResearchCompletenessGuard:
+    def test_short_circuit_not_complete_despite_candidate_counts(self) -> None:
+        """Gate 4A：``candidate_counts`` 有 81/729 但无折/无 MC，不得判为完整研究。"""
+        summary = ResearchSummary(
+            ran=True,
+            insufficient_sample=True,
+            folds=0,
+            candidate_counts={"steady": 81, "aggressive": 729},
+            skipped_reason="样本不足（合成数据 <5 年），未执行参数搜索",
+        )
+        d = summary.to_dict()
+        assert d["candidate_counts"] == {"steady": 81, "aggressive": 729}
+        assert d["folds"] == 0
+        assert d["monte_carlo"] == {}
+        assert _is_complete_research(d) is False, (
+            "仅凭 candidate_counts 不得把短路研究描述为完整研究"
+        )
+
+    def test_complete_research_satisfies_guard(self) -> None:
+        summary = ResearchSummary(
+            ran=True,
+            insufficient_sample=False,
+            folds=1,
+            steady_eligibility="NOT_ELIGIBLE_FOR_LIVE_TRADING",
+            aggressive_eligibility="SIMULATION_ONLY",
+            stress={"baseline": {"total_return": 0.1}},
+            perturbation={"total_combinations": 8, "positive_return_ratio": 0.5},
+            monte_carlo={
+                "n_paths": 10_000,
+                "prob_ten_x": 0.01,
+                "prob_loss_50": 0.2,
+                "prob_near_zero": 0.1,
+            },
+            candidate_counts={"steady": 81, "aggressive": 729},
+        )
+        assert _is_complete_research(summary.to_dict()) is True
+
+
+# --------------------------------------------------------------------------- #
 # 4. 步骤接线（快速，注入式）
 # --------------------------------------------------------------------------- #
 

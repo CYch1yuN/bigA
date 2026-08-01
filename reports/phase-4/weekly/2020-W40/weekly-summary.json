@@ -1,7 +1,7 @@
 {
   "week_key": "2020-W40",
   "as_of_date": "2020-10-03",
-  "run_id": "weekly-20201003-9f62c24bd5fe0864",
+  "run_id": "weekly-20201003-b309d2d6dafa4923",
   "week_start": "2020-09-28",
   "week_end": "2020-10-04",
   "trading_days": [
@@ -69,27 +69,89 @@
     "ran": true,
     "skipped_reason": null,
     "error": null,
-    "insufficient_sample": true,
-    "folds": 0,
-    "steady_eligibility": "INSUFFICIENT_RESEARCH_SAMPLE",
+    "insufficient_sample": false,
+    "folds": 2,
+    "steady_eligibility": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
     "aggressive_eligibility": "SIMULATION_ONLY",
-    "steady_total_return": null,
-    "steady_max_drawdown": null,
-    "steady_sharpe": null,
-    "aggressive_total_return": null,
-    "aggressive_max_drawdown": null,
-    "aggressive_sharpe": null,
+    "steady_total_return": 0.0,
+    "steady_max_drawdown": 0.0,
+    "steady_sharpe": 0.0,
+    "aggressive_total_return": 0.0,
+    "aggressive_max_drawdown": 0.0,
+    "aggressive_sharpe": 0.0,
     "stress": {
-      "steady": {},
-      "aggressive": {}
+      "steady": {
+        "baseline": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "fee_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "slippage_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "combined_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        }
+      },
+      "aggressive": {
+        "baseline": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "fee_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "slippage_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        },
+        "combined_2x": {
+          "total_return": 0.0,
+          "max_drawdown": 0.0,
+          "sharpe": 0.0
+        }
+      }
     },
-    "monte_carlo": {},
-    "regime": {},
+    "monte_carlo": {
+      "n_paths": 10000,
+      "prob_ten_x": 0.0,
+      "prob_loss_50": 0.0,
+      "prob_near_zero": 0.0
+    },
+    "regime": {
+      "day_count": 523,
+      "distribution": {
+        "bull": 523
+      }
+    },
     "perturbation": {
-      "steady": {},
-      "aggressive": {}
+      "steady": {
+        "total_combinations": 81,
+        "positive_return_ratio": 0.0,
+        "return_median": 0.0,
+        "baseline_return": 0.0
+      },
+      "aggressive": {
+        "total_combinations": 729,
+        "positive_return_ratio": 0.0,
+        "return_median": 0.0,
+        "baseline_return": 0.0
+      }
     },
-    "data_hash": "d4f876e47c161188f7e62c0debae4575119ab87e07a79adf7c4aa3aa6df7908e",
+    "data_hash": "a89e2e070373c2d23f74250543b11e3a1d1b32fcd0bc45e4048551eeb2f35b85",
     "config_hash": "2157dc98bdecdb70dfd3d30421bb9e80740175d814439df2cfdff5f032d94965",
     "code_commit": null,
     "candidate_counts": {
@@ -97,7 +159,6 @@
       "aggressive": 729
     },
     "limitations": [
-      "样本不足，标记为 INSUFFICIENT_RESEARCH_SAMPLE",
       "Phase 3 仅用于模拟研究，不构成投资建议或实盘依据",
       "激进轨永远为 SIMULATION_ONLY，不输出实盘资格",
       "蒙特卡洛结果仅用于概率研究，不构成收益承诺",

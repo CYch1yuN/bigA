@@ -426,3 +426,25 @@ def test_weekly_audit_artifacts(tmp_path):
     assert any("weekly-report.md" in p for p in listed)
     verified = verify_manifest(paths.root / "manifest.json", config=config)
     assert verified["output_hash"] == manifest["output_hash"]
+
+
+# ---------------------------------------------------------------------- #
+# 9) 正式周示例必须真正完成研究（Gate 4A 复审阻断项）
+# ---------------------------------------------------------------------- #
+
+def test_official_weekly_example_has_complete_research():
+    """仓库内正式周示例不得是短路研究：必须有折、压力、扰动与 MC 概率分布。
+
+    仅凭 candidate_counts=81/729 而 folds=0 / monte_carlo 为空，一律视为未完成。
+    """
+    summary_path = ROOT / "reports" / "phase-4" / "weekly" / "2020-W40" / "weekly-summary.json"
+    assert summary_path.exists(), "缺少正式周示例 weekly-summary.json"
+    ws = json.loads(summary_path.read_text(encoding="utf-8"))
+    research = ws.get("research") or {}
+    assert research.get("insufficient_sample") is False, "正式周示例研究样本不足"
+    assert research.get("folds", 0) > 0, "正式周示例必须有非空样本外折"
+    assert research.get("candidate_counts") == {"steady": 81, "aggressive": 729}
+    mc = research.get("monte_carlo") or {}
+    assert mc.get("n_paths") == 10_000, "正式周示例必须实际执行 MC-10000"
+    assert research.get("stress"), "正式周示例必须有压力测试结果"
+    assert research.get("perturbation"), "正式周示例必须有参数扰动结果"
