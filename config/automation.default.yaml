@@ -1,0 +1,158 @@
+# Phase 4 Windows 本机自动化默认配置
+#
+# 安全边界（不可通过本文件放宽）：
+#   - 本系统只产出研究信号、模拟订单与模拟账户报告。
+#   - 禁止连接券商接口，禁止接触任何真实资金账户。
+#   - 稳健轨资格结论固定为 NOT_ELIGIBLE_FOR_LIVE_TRADING。
+#   - 激进轨资格结论固定为 SIMULATION_ONLY。
+#   - live_trading.enabled 置为 true 时，运行会被资格闸门拦截为
+#     BLOCKED_NOT_ELIGIBLE 并以非零码退出，而不是真的去下单。
+#
+# 所有路径均相对仓库根目录；所有阈值集中于此，代码中禁止硬编码。
+
+schema_version: 1
+
+# ---------------------------------------------------------------------- #
+# 路径
+# ---------------------------------------------------------------------- #
+paths:
+  data_dir: data
+  state_dir: state/automation
+  reports_dir: reports/phase-4
+  logs_dir: logs/automation
+  archive_dir: reports/phase-4/archive
+
+# ---------------------------------------------------------------------- #
+# 交易日历（fail-closed：缺失或过期一律失败，不按工作日推断）
+# ---------------------------------------------------------------------- #
+calendar:
+  calendar_path: data/metadata/trade_calendar.parquet
+  date_column: trade_date
+  is_open_column: is_open
+  max_staleness_days: 30
+  require_calendar: true
+
+# ---------------------------------------------------------------------- #
+# 数据更新
+# ---------------------------------------------------------------------- #
+data:
+  # 观察标的（研究用途；可按需扩展，但需重新跑质量闸门）
+  symbols:
+    - "600000.SH"
+    - "600036.SH"
+    - "600519.SH"
+    - "000001.SZ"
+    - "000002.SZ"
+    - "000651.SZ"
+    - "002415.SZ"
+    - "300750.SZ"
+  # 基准（激进轨相对强度需要）
+  benchmark_symbols:
+    - "000300.SH"
+  lookback_days: 400
+  ready_time: "18:30"
+  max_retries: 3
+  retry_interval_seconds: 1.0
+  allow_skip_when_unavailable: true
+
+# ---------------------------------------------------------------------- #
+# 数据质量闸门
+# ---------------------------------------------------------------------- #
+quality:
+  block_on_critical: true    # 不可关闭
+  max_warning: 0             # 0 表示不对 warning 数量设限
+  allow_stale_fallback: false  # 不可开启：禁止静默复用昨日数据
+
+# ---------------------------------------------------------------------- #
+# 模拟账户（paper account，非真实账户）
+# ---------------------------------------------------------------------- #
+accounts:
+  - account_id: paper-steady
+    track: steady
+    initial_cash: 1000.0
+    eligibility_status: NOT_ELIGIBLE_FOR_LIVE_TRADING
+  - account_id: paper-aggressive
+    track: aggressive
+    initial_cash: 1000.0
+    eligibility_status: SIMULATION_ONLY
+
+# ---------------------------------------------------------------------- #
+# 观察窗口
+# ---------------------------------------------------------------------- #
+observation:
+  target_trading_days: 60
+  min_days_for_stats: 5
+
+# ---------------------------------------------------------------------- #
+# 跨进程锁
+# ---------------------------------------------------------------------- #
+lock:
+  lock_filename: automation.lock
+  stale_after_seconds: 21600   # 6 小时
+  allow_steal_active: false    # 不可开启
+
+# ---------------------------------------------------------------------- #
+# 结构化日志（JSONL）
+# ---------------------------------------------------------------------- #
+logging:
+  level: INFO
+  filename_pattern: "automation-{date}.jsonl"
+  console: true
+  # 命中以下键名的字段一律脱敏为 ***REDACTED***
+  redact_keys:
+    - api_key
+    - apikey
+    - authorization
+    - auth
+    - token
+    - access_token
+    - refresh_token
+    - password
+    - passwd
+    - secret
+    - cookie
+    - session
+    - credential
+    - private_key
+
+# ---------------------------------------------------------------------- #
+# 本机告警
+# ---------------------------------------------------------------------- #
+alerts:
+  enabled: true
+  failure_marker_filename: LAST_FAILURE.marker
+  latest_failure_md: latest-failure.md
+  latest_failure_json: latest-failure.json
+  windows_event_log: false
+  event_log_source: AShareQuantAutomation
+  toast: false
+  # 只能提供环境变量名；配置文件中出现明文 URL 会被校验拒绝
+  webhook_env_var: ASHARE_AUTOMATION_WEBHOOK_URL
+  webhook_timeout_seconds: 5.0
+
+# ---------------------------------------------------------------------- #
+# 归档与保留
+# ---------------------------------------------------------------------- #
+archive:
+  enabled: true
+  retain_days: 180
+  max_batches: 52
+
+# ---------------------------------------------------------------------- #
+# Windows 任务计划
+# ---------------------------------------------------------------------- #
+scheduler:
+  task_name_prefix: AShareQuantAutomation
+  # 与 data.ready_time 保持一致；全仓库统一 18:30
+  daily_time: "18:30"
+  weekly_day: SAT
+  weekly_time: "09:00"
+  run_level: LIMITED
+  working_directory: "."
+
+# ---------------------------------------------------------------------- #
+# 实盘开关（永久关闭）
+# ---------------------------------------------------------------------- #
+live_trading:
+  enabled: false
+  broker_endpoint: null

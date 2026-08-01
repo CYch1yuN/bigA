@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "run_id": "weekly-20201003-b309d2d6dafa4923",
+  "task_type": "weekly",
+  "as_of_date": "2020-10-03",
+  "code_commit": "d69d22a40e26ee807e401a331b4eaa5be9ec58f3",
+  "config_hash": "407d5f82c815276b",
+  "input_hash": "35bc76fb825ecd69",
+  "output_hash": "2feabad744bdbbef6ef7de52295b6156640c849f645a09b982fe5688ca16c3b9",
+  "generated_at": "2026-08-02T01:49:23",
+  "count": 17,
+  "files": [
+    {
+      "path": "reports/phase-4/weekly/2020-W40/account-snapshot.json",
+      "sha256": "6e2f52488ea7667ff46c43a5c24646470e8c7c4d2921759116feba1b6789ef59",
+      "bytes": 4977
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/accounts.json",
+      "sha256": "f30b455c00ab97ac1511f1f0af5c841806f4121c4a4f408d8e2957b1a8d8d719",
+      "bytes": 5789
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/equity.parquet",
+      "sha256": "dc55f75d52febf003396561692cc699d9b00f0705a301e71e2f3c6f32cdd670a",
+      "bytes": 5841
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/fills.parquet",
+      "sha256": "da072a3ceb5a3af3f8fdd3c83e4d0db81c1187564662ba043e21020bd1fc5699",
+      "bytes": 6471
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/orders.parquet",
+      "sha256": "ecee751c4e77f402552de0cda993fd619b518f67a385f5eac0b6c4793fd1cb84",
+      "bytes": 9849
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/quality-summary.json",
+      "sha256": "0fa3947ffc19349430e346c36c08d2af2ae32b2c9cc92b9b1b5c636b1bdbe819",
+      "bytes": 274
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/run-report.md",
+      "sha256": "c28aad82cfc45bc6a236019dc9bb6775d9ba2e31a601085106ef003a6960152a",
+      "bytes": 5591
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/run-summary.json",
+      "sha256": "68251699393ecbe57a466fb33560689199e986a8b1e6247e220566fa10123882",
+      "bytes": 2076
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/run.json",
+      "sha256": "ad5d00c00ea1243d494f04d770ae10a9461785b327bcfb16a06aef5300069eae",
+      "bytes": 9534
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/signals.json",
+      "sha256": "6bb23f66e675f0581e7d2ac8bd4d8ad8592c6ebe3d340c4dcceb1eb5c2ca2859",
+      "bytes": 621
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/signals.parquet",
+      "sha256": "6bc2c883aa39d96e5d06a2b911ef9e57aff3848946e1377d383d7ce58f7800a8",
+      "bytes": 5984
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/simulated-orders.json",
+      "sha256": "7ee61a2a65a59d3fd7eee208df881ba98dd8889b503a08a0693fa57027eed093",
+      "bytes": 144
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/weekly-report.md",
+      "sha256": "0ba47dbc71ca8fada7e1d3d66f3021c8a6d9df27a1928ae62bf51c0f92441472",
+      "bytes": 5704
+    },
+    {
+      "path": "reports/phase-4/weekly/2020-W40/weekly-summary.json",
+      "sha256": "67a44c8bc1b77d41dbce7152137ad183ddf97df4461638e769cb7c8c9d467ecb",
+      "bytes": 42056
+    },
+    {
+      "path": "research_data/benchmark.parquet",
+      "sha256": "0e8014d6d912a363e1db5c92831460085912b96a23051094f32131d6fb76fedc",
+      "bytes": 27586
+    },
+    {
+      "path": "research_data/quotes.parquet",
+      "sha256": "c463ea8306954d5a256d5629a35337c8e02de91a554788ea5e85bc1197b38866",
+      "bytes": 842687
+    },
+    {
+      "path": "research_data/security_status.parquet",
+      "sha256": "c750811d84a8fff4da1be743ea2eb833246d021ecd32e236b6f7d0c72ae6da74",
+      "bytes": 3824
+    }
+  ]
+}

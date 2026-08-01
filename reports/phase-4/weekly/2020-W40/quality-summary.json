@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_type": "weekly",
+  "note": "本任务不单独执行数据质量闸门；质量结果由每日运行各自记录",
+  "summary": {
+    "critical": 0,
+    "warning": 0,
+    "rows_checked": 0
+  },
+  "has_critical": false,
+  "issues_count": 0
+}
