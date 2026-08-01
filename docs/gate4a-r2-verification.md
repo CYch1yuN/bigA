@@ -13,8 +13,9 @@
 ## 1. 全量测试数量
 
 - `compileall -q src`：**exit 0**
-- `pytest --collect-only -q tests`：**1327 项**（Codex 独立收集口径，非手写预计值）
-- `pytest tests -q`：**1327 passed / 0 failed / exit 0**
+- `pytest --collect-only -q tests`：**1329 项**（Codex 独立收集口径 1327 + 本轮新增 2 项：
+  ① 复验报告措辞/乱码断言 ② manifest 自引用回归测试；权威计数以 collect-only 为准）
+- `pytest tests -q`：**1329 passed / 0 failed / exit 0**
 - 关键 FR 测试集（FR-19/20/21/22/23/24/25 + phase4）：全绿
 
 ## 2. 总覆盖率
@@ -91,7 +92,7 @@
 
 ## 结论
 
-FR-19/20/21/22/23/24/25 全部完成；全量测试 1327 全绿；双门槛覆盖率达标
+FR-19/20/21/22/23/24/25 全部完成；全量测试 1329 全绿；双门槛覆盖率达标
 （TOTAL 91%、automation 91.12%）；编码与密钥扫描零问题；双跑字节一致。
 
 **等待 Codex Gate 4A 最终复审，PR 不得合并。**
