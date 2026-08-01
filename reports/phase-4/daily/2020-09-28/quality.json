@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "rows_checked": 1514,
+    "symbols_checked": 8,
+    "critical": 0,
+    "warning": 0,
+    "total": 0
+  },
+  "config_summary": {
+    "duplicate_primary_key": {
+      "severity": "critical"
+    },
+    "missing_trade_day": {
+      "severity": "critical"
+    },
+    "ohlc_relation": {
+      "severity": "critical"
+    },
+    "negative_price": {
+      "severity": "critical"
+    },
+    "negative_volume": {
+      "severity": "critical"
+    },
+    "required_completeness": {
+      "severity": "critical"
+    },
+    "raw_qfq_date_consistency": {
+      "severity": "critical"
+    },
+    "abnormal_volume": {
+      "severity": "warning",
+      "lookback_days": 20,
+      "median_ratio_threshold": 20.0
+    },
+    "abnormal_price_jump": {
+      "severity": "warning",
+      "abs_return_threshold": 0.2
+    },
+    "adjustment_factor_continuity": {
+      "severity": "critical",
+      "max_factor_ratio": 5.0
+    },
+    "status_contradiction": {
+      "severity": "critical"
+    },
+    "cross_source": {
+      "severity": "warning",
+      "close_relative_tolerance": 0.02,
+      "volume_relative_tolerance": 0.1
+    }
+  },
+  "schema_version": "1.0.0",
+  "has_critical": false,
+  "exit_code": 0,
+  "issues": []
+}

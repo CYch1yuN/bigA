@@ -582,6 +582,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_res.add_argument("--output", default="reports/phase-3", help="报告输出目录")
     p_res.set_defaults(func=cmd_research)
 
+    # Phase 4 本机自动化（研究/模拟，非实盘）
+    from .automation.cli import register as register_automation
+
+    register_automation(sub)
+
     return p
 
 

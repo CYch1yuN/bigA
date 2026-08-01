@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "run_id": "weekly-20201003-76a2f6398dd4fbd2",
+  "task_type": "weekly",
+  "as_of_date": "2020-10-03",
+  "state": "SUCCESS",
+  "exit_code": 0,
+  "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
+  "config_hash": "5abdf662f72f3b6e",
+  "input_hash": "9a66973963aa3378",
+  "started_at": "2026-08-01T18:59:53",
+  "finished_at": "2026-08-01T18:59:53",
+  "duration_seconds": 0.027529,
+  "attempt": 1,
+  "message": "每周汇总完成：2020-W40 覆盖 5/6 个交易日，模拟成交 0 笔，新增研究信号 0 条，观察窗口 5/60 交易日，归档 0 个目录，跑批缺口 1 天/异常 0 天（需人工补跑）；全部为模拟账户记录，未连接券商、未涉及真实资金",
+  "artifacts": [
+    "reports/phase-4/weekly/2020-W40/signals.json",
+    "reports/phase-4/weekly/2020-W40/simulated-orders.json",
+    "reports/phase-4/weekly/2020-W40/accounts.json",
+    "reports/phase-4/weekly/2020-W40/weekly-summary.json"
+  ],
+  "steps": [
+    {
+      "name": "lock",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.001,
+      "detail": {
+        "acquired": true,
+        "reason": "成功获取锁",
+        "stole_stale": false,
+        "holder": {
+          "pid": 61952,
+          "hostname": "USER-20250711OM",
+          "task_type": "weekly",
+          "as_of_date": "2020-10-03",
+          "started_at": "2026-08-01T18:59:53",
+          "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
+          "run_id": "weekly-20201003-76a2f6398dd4fbd2"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "preflight",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.000997,
+      "detail": {
+        "accounts": [
+          "paper-steady",
+          "paper-aggressive"
+        ],
+        "live_trading_enabled": false,
+        "broker_connected": false,
+        "mutates_account_state": false,
+        "eligibility": {
+          "paper-steady": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
+          "paper-aggressive": "SIMULATION_ONLY"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "calendar",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.0,
+      "detail": {
+        "source": "synthetic-calendar",
+        "first_date": "2020-01-02",
+        "last_date": "2020-10-07",
+        "trading_day_count": 6,
+        "generated_at": null,
+        "week_key": "2020-W40",
+        "week_start": "2020-09-28",
+        "week_end": "2020-10-04",
+        "review_end": "2020-10-03",
+        "trading_days": [
+          "2020-09-28",
+          "2020-09-29",
+          "2020-09-30",
+          "2020-10-01",
+          "2020-10-02",
+          "2020-10-03"
+        ],
+        "as_of_is_trading_day": true
+      },
+      "error": null
+    },
+    {
+      "name": "collect_runs",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.003998,
+      "detail": {
+        "expected_trading_days": 6,
+        "records_found": 5,
+        "signals": 0,
+        "orders": 0,
+        "artifact_dirs": 5
+      },
+      "error": null
+    },
+    {
+      "name": "coverage_audit",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.001003,
+      "detail": {
+        "expected_trading_days": 6,
+        "succeeded_days": 5,
+        "missing_days": [
+          "2020-10-03"
+        ],
+        "unhealthy_days": [],
+        "state_counts": {
+          "SUCCESS": 5
+        },
+        "calendar_disagreement_days": 0,
+        "coverage_pct": 83.33,
+        "coverage_ok": false
+      },
+      "error": null
+    },
+    {
+      "name": "account_review",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.001505,
+      "detail": {
+        "accounts": 2,
+        "uninitialized": [],
+        "weekly_return_pct": {
+          "paper-steady": 0.0,
+          "paper-aggressive": 0.0
+        },
+        "state_written": false
+      },
+      "error": null
+    },
+    {
+      "name": "observation_review",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.001007,
+      "detail": {
+        "accounts_reviewed": 2,
+        "observation_completed": [],
+        "live_trading_authorized": false,
+        "requires_independent_review": true,
+        "note": "观察窗口完成仅表示样本量达标，不代表取得实盘资格；实盘资格需独立复审，且不由本自动化系统作出"
+      },
+      "error": null
+    },
+    {
+      "name": "archive",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.00201,
+      "detail": {
+        "enabled": true,
+        "archived_count": 0,
+        "archived_bytes": 0,
+        "pruned_batches": [],
+        "removed_files": 0,
+        "dry_run": false
+      },
+      "error": null
+    },
+    {
+      "name": "artifacts",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.010499,
+      "detail": {
+        "files": [
+          "signals.json",
+          "simulated-orders.json",
+          "accounts.json",
+          "weekly-summary.json"
+        ],
+        "dry_run": false
+      },
+      "error": null
+    }
+  ]
+}

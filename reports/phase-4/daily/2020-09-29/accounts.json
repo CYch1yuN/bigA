@@ -1,0 +1,114 @@
+{
+  "as_of_date": "2020-09-29",
+  "run_id": "daily-20200929-9633f1046f7a0905",
+  "equity": {
+    "paper-steady": {
+      "cash": "1000.00",
+      "position_value": "0.00",
+      "total_equity": "1000.00",
+      "positions": 0,
+      "eligibility_status": "NOT_ELIGIBLE_FOR_LIVE_TRADING"
+    },
+    "paper-aggressive": {
+      "cash": "1000.00",
+      "position_value": "0.00",
+      "total_equity": "1000.00",
+      "positions": 0,
+      "eligibility_status": "SIMULATION_ONLY"
+    }
+  },
+  "observation": [
+    {
+      "account_id": "paper-steady",
+      "strategy_track": "steady",
+      "eligibility_status": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
+      "target_trading_days": 60,
+      "observed_trading_days": 2,
+      "remaining_trading_days": 58,
+      "completed": false,
+      "progress_pct": 3.33,
+      "live_trading": false,
+      "disclaimer": "本账户为研究用模拟账户，所有订单与持仓均为纸面记录，不构成投资建议，也不构成任何实盘交易授权。"
+    },
+    {
+      "account_id": "paper-aggressive",
+      "strategy_track": "aggressive",
+      "eligibility_status": "SIMULATION_ONLY",
+      "target_trading_days": 60,
+      "observed_trading_days": 2,
+      "remaining_trading_days": 58,
+      "completed": false,
+      "progress_pct": 3.33,
+      "live_trading": false,
+      "disclaimer": "本账户为研究用模拟账户，所有订单与持仓均为纸面记录，不构成投资建议，也不构成任何实盘交易授权。"
+    }
+  ],
+  "accounts": [
+    {
+      "schema_version": 1,
+      "account_id": "paper-steady",
+      "strategy_track": "steady",
+      "eligibility_status": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
+      "initial_cash": "1000.00",
+      "cash": "1000.00",
+      "positions": [],
+      "as_of_date": "2020-09-29",
+      "last_run_id": "daily-20200929-9633f1046f7a0905",
+      "observation_days": 2,
+      "history": [
+        {
+          "date": "2020-09-28",
+          "cash": "1000.00",
+          "position_value": "0.00",
+          "total_equity": "1000.00",
+          "run_id": "daily-20200928-f0bdd9dec4b66025",
+          "positions": 0
+        },
+        {
+          "date": "2020-09-29",
+          "cash": "1000.00",
+          "position_value": "0.00",
+          "total_equity": "1000.00",
+          "run_id": "daily-20200929-9633f1046f7a0905",
+          "positions": 0
+        }
+      ],
+      "processed_order_keys": [],
+      "simulated": true,
+      "live_trading": false
+    },
+    {
+      "schema_version": 1,
+      "account_id": "paper-aggressive",
+      "strategy_track": "aggressive",
+      "eligibility_status": "SIMULATION_ONLY",
+      "initial_cash": "1000.00",
+      "cash": "1000.00",
+      "positions": [],
+      "as_of_date": "2020-09-29",
+      "last_run_id": "daily-20200929-9633f1046f7a0905",
+      "observation_days": 2,
+      "history": [
+        {
+          "date": "2020-09-28",
+          "cash": "1000.00",
+          "position_value": "0.00",
+          "total_equity": "1000.00",
+          "run_id": "daily-20200928-f0bdd9dec4b66025",
+          "positions": 0
+        },
+        {
+          "date": "2020-09-29",
+          "cash": "1000.00",
+          "position_value": "0.00",
+          "total_equity": "1000.00",
+          "run_id": "daily-20200929-9633f1046f7a0905",
+          "positions": 0
+        }
+      ],
+      "processed_order_keys": [],
+      "simulated": true,
+      "live_trading": false
+    }
+  ]
+}

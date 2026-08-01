@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "run_id": "daily-20201001-d9da42bdcd227b69",
+  "task_type": "daily",
+  "as_of_date": "2020-10-01",
+  "state": "SUCCESS",
+  "exit_code": 0,
+  "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
+  "config_hash": "5abdf662f72f3b6e",
+  "input_hash": "731eaf7d346a36d6",
+  "started_at": "2026-08-01T18:59:53",
+  "finished_at": "2026-08-01T18:59:53",
+  "duration_seconds": 0.1425,
+  "attempt": 1,
+  "message": "每日模拟运行完成：撮合 0 笔（共 0 条订单记录），新增研究信号 0 条，观察窗口 4/60 交易日；全部为模拟账户记录，未连接券商、未涉及真实资金",
+  "artifacts": [
+    "reports/phase-4/daily/2020-10-01/signals.json",
+    "reports/phase-4/daily/2020-10-01/simulated-orders.json",
+    "reports/phase-4/daily/2020-10-01/accounts.json",
+    "reports/phase-4/daily/2020-10-01/quality.json"
+  ],
+  "steps": [
+    {
+      "name": "lock",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.000997,
+      "detail": {
+        "acquired": true,
+        "reason": "成功获取锁",
+        "stole_stale": false,
+        "holder": {
+          "pid": 61952,
+          "hostname": "USER-20250711OM",
+          "task_type": "daily",
+          "as_of_date": "2020-10-01",
+          "started_at": "2026-08-01T18:59:53",
+          "code_commit": "7f1c8927e8f7933e3ca39f7e8ec3c84fd198800d",
+          "run_id": "daily-20201001-d9da42bdcd227b69"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "preflight",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.0,
+      "detail": {
+        "accounts": [
+          "paper-steady",
+          "paper-aggressive"
+        ],
+        "live_trading_enabled": false,
+        "broker_connected": false,
+        "eligibility": {
+          "paper-steady": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
+          "paper-aggressive": "SIMULATION_ONLY"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "calendar",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.0,
+      "detail": {
+        "source": "synthetic-calendar",
+        "first_date": "2020-01-02",
+        "last_date": "2020-10-07",
+        "trading_day_count": 201,
+        "generated_at": null,
+        "is_trading_day": true,
+        "previous_trading_day": "2020-09-30",
+        "next_trading_day": "2020-10-02"
+      },
+      "error": null
+    },
+    {
+      "name": "market_data",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.001999,
+      "detail": {
+        "source": "synthetic-research-samples",
+        "online": false,
+        "synthetic": true,
+        "rows": 1538,
+        "symbols": 8,
+        "date_start": "2020-01-02",
+        "date_end": "2020-10-01",
+        "loaded_at": "2026-08-01T18:59:53.349326",
+        "notes": [
+          "合成样本数据，仅用于离线测试，不代表真实市场"
+        ],
+        "security_master_available": true,
+        "benchmark_available": true
+      },
+      "error": null
+    },
+    {
+      "name": "quality_gate",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.03197,
+      "detail": {
+        "critical": 0,
+        "warning": 0,
+        "total": 0,
+        "has_critical": false
+      },
+      "error": null
+    },
+    {
+      "name": "settle_pending",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.0,
+      "detail": {
+        "pending_signal_date": "2020-09-30",
+        "pending_count": 0,
+        "filled": 0,
+        "rejected": 0,
+        "duplicates": 0,
+        "fill_date": "2020-10-01"
+      },
+      "error": null
+    },
+    {
+      "name": "universe",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.000989,
+      "detail": {
+        "symbols": 8,
+        "security_master_available": true,
+        "filter_kwargs": {
+          "min_turnover": 0.0,
+          "min_listing_days": 120
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "generate_signals",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.070971,
+      "detail": {
+        "signal_date": "2020-10-01",
+        "fill_date": "2020-10-02",
+        "count": 0,
+        "by_track": {
+          "steady": 0,
+          "aggressive": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "stage_pending",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.002011,
+      "detail": {
+        "written": true,
+        "count": 0,
+        "path": "pending-signals.json"
+      },
+      "error": null
+    },
+    {
+      "name": "mark_to_market",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.002998,
+      "detail": {
+        "priced_symbols": 8,
+        "accounts": 2,
+        "persisted": true,
+        "observation": {
+          "paper-steady": 4,
+          "paper-aggressive": 4
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "artifacts",
+      "status": "OK",
+      "started_at": "2026-08-01T18:59:53",
+      "finished_at": "2026-08-01T18:59:53",
+      "duration_seconds": 0.011518,
+      "detail": {
+        "files": [
+          "signals.json",
+          "simulated-orders.json",
+          "accounts.json",
+          "quality.json"
+        ],
+        "dry_run": false
+      },
+      "error": null
+    }
+  ]
+}
