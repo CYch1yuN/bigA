@@ -111,13 +111,52 @@
 
 - `git diff --check origin/main..HEAD`：**exit 0**（无空白错误）
 
+## 15. Gate 4B 真实观察跟踪器修复（PASS WITH FIXES → 修复完成）
+
+复审阻断项：`_track_real` 用 `(d - prev).days == 1` 按**自然日**判断连续性，
+周五→周一相差 3 天会每周重置计数，真实 A 股观察窗口永远无法达到 60 天；
+且 `track` 只统计 SUCCESS 记录，未复核缺失日/失败日/重复订单/恒等式/负现金/
+manifest 可复算性。
+
+修复（`scripts/gate4b_observation.py` + `tests/test_gate4b_tracker.py`，12 项测试）：
+
+- **交易日历驱动**：自启动日（最早运行记录）起用 `TradingCalendar.next_trading_day`
+  生成预期交易日序列，周末/节假日由日历跳过，**不再按自然日推断**；
+- **逐日复核**（每一预期交易日全部满足才计入连续段）：
+  1. 运行记录存在且 `SUCCESS` / exit 0（缺失或失败即违规）；
+  2. 报告产物齐全（run.json / manifest.json / accounts.json /
+     simulated-orders.json / signals.json）；
+  3. `manifest.json` 哈希可复算（`verify_manifest`）；
+  4. 全窗口订单 `unique_key` / `order_id` 无重复（无重复订单）；
+  5. 账务恒等式 `cash + position_value == total_equity`（无无法解释的权益变化），
+     现金非负；
+- **fail-closed**：交易日历缺失 → `calendar_error` + 进度 0，不产出虚假进度；
+  日历覆盖不足 60 个交易日 → 如实标记 `calendar_coverage`，不假装达标；
+- 只有从启动日起**连续 60 个预期交易日全部满足**验收条件才输出 60/60。
+- 回归测试覆盖：周末不重置（60 个工作日全通过 → 60/60）、首日非周一、
+  缺失日/失败日/重复订单/恒等式违规/负现金/manifest 篡改各自中断、
+  无记录 NOT STARTED、日历不可用 fail-closed、日历覆盖不足、
+  Markdown 渲染口径。
+
+## 16. 全量测试数量（tracker 修复后）
+
+- `pytest --collect-only -q tests`：**1346 项**（1334 + 12 项 Gate 4B tracker 回归）
+- `pytest tests -q`：**1346 passed / 0 failed / exit 0**
+- 覆盖率：**TOTAL 91%**（8620/796）、**automation 91.20%**（3964/349），双门槛 ≥90% ✅
+
 ---
 
 ## 结论
 
-FR-19/20/21/22/23/24/25 全部完成；全量测试 1332 全绿；双门槛覆盖率达标
-（TOTAL 91%、automation 91.12%）；编码与密钥扫描零问题；双跑字节一致；
+FR-19/20/21/22/23/24/25 全部完成；全量测试 1346 全绿；双门槛覆盖率达标
+（TOTAL 91%、automation 91.20%）；编码与密钥扫描零问题；双跑字节一致；
 正式周示例已完成完整研究（folds=2、81/729 参数搜索、MC-10000、压力与扰动实测结果）。
-Gate 4A 复审阻断项已闭环。
+Gate 4A 复审阻断项已闭环；Gate 4B 真实观察跟踪器已修复（交易日历驱动 + 逐日复核）。
 
-**等待 Codex Gate 4A 最终复审，PR 不得合并。**
+Gate 4B 状态口径：
+- **historical replay（60 日历史回放预检）：PASS**
+- **continuous operation（连续 60 个交易日自动运行）：NOT STARTED（0/60）**
+  （从真实自动任务启动日起按交易日历累计，未启动；tracker 已就绪）
+- **实盘资格：不具备**（两轨结论不变）
+
+**等待 Codex Gate 4B 复审（continuous operation 尚未开始）。**

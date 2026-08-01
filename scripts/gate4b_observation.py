@@ -12,9 +12,12 @@
     注意：这只是**预检**，不等同于 Gate 4B「连续 60 个交易日自动运行」。
 
 ``--mode track``
-    读取真实自动化状态（``state/automation`` 运行记录）与产物，统计
-    「真实自动任务」自启动日起按实际交易日累计的连续运行进度 X/60，
-    并校验真实运行中的重复订单与账务恒等式。正式观察尚未启动时为 0/60。
+    读取真实自动化状态（``state/automation`` 运行记录）与产物，用**交易日历**
+    生成预期交易日序列（不是按自然日推断），自启动日起逐日复核：
+    记录必须存在且 SUCCESS / exit 0；报告产物齐全；每日 manifest 哈希可复算；
+    无重复订单；账务恒等式 cash + position_value == total_equity 成立；
+    现金非负。只有从起始交易日起**连续 60 个预期交易日全部满足验收条件**
+    才输出 60/60。正式观察尚未启动时为 0/60。
 
 用法::
 
@@ -30,13 +33,18 @@ import tempfile
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from ashare_quant.automation.calendar import TradingCalendar
+from ashare_quant.automation.audit import verify_manifest
+from ashare_quant.automation.calendar import (
+    CalendarUnavailableError,
+    TradingCalendar,
+    load_trading_calendar,
+)
 from ashare_quant.automation.config import (
     AccountConfig,
     AutomationConfig,
@@ -185,43 +193,182 @@ def _run_replay() -> dict[str, Any]:
         }
 
 
-def _track_real() -> dict[str, Any]:
-    """真实自动任务进度：读取 state/automation 运行记录，统计连续交易日 X/60。"""
-    config = load_automation_config(ROOT / "config" / "automation.default.yaml")
+def _track_real(
+    config: Optional[AutomationConfig] = None,
+    *,
+    calendar: Optional[TradingCalendar] = None,
+    observation_target: int = OBSERVATION_DAYS,
+) -> dict[str, Any]:
+    """真实自动任务进度：用交易日历生成预期序列，逐日复核运行记录与审计产物。
+
+    从**最早的每日运行记录**（真实任务启动日）起，按交易日历生成连续
+    ``observation_target`` 个预期交易日；对每个预期交易日逐日复核：
+
+    1. 运行记录存在且 ``SUCCESS`` / exit 0（缺失或失败 = 违规）；
+    2. 报告目录产物齐全（run.json / manifest.json / accounts.json /
+       simulated-orders.json / signals.json）；
+    3. 每日 ``manifest.json`` 哈希可复算（``verify_manifest``）；
+    4. 全窗口订单 ``unique_key`` / ``order_id`` 无重复（无重复订单）；
+    5. 每日账务恒等式 cash + position_value == total_equity（无无法解释的
+       权益变化）；现金非负。
+
+    只有从启动日起**连续全部通过**的预期交易日才计入进度；任何一天缺失、
+    失败或任一项复核不过，进度即中断（连续语义，与自然日无关——周末由
+    交易日历跳过，不会重置计数）。
+    """
+    if config is None:
+        config = load_automation_config(ROOT / "config" / "automation.default.yaml")
     store = StateStore(config.state_dir)
-    real_dir = config.state_dir
-    run_root = real_dir / "runs" / "daily"
-    records = []
-    if run_root.exists():
-        for p in sorted(run_root.glob("*.json")):
-            try:
-                rec = json.loads(p.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            if rec.get("task_type") == "daily":
-                records.append(rec)
-    # 连续交易日计数：从最早的 SUCCESS 记录起，按日期连续（真实日历交易日由记录本身体现）
-    success_days = sorted(
-        {date.fromisoformat(r["as_of_date"]) for r in records if r.get("state") == "SUCCESS"}
-    )
+    if calendar is None:
+        try:
+            calendar = load_trading_calendar(config)
+        except CalendarUnavailableError as exc:
+            return {
+                "mode": "track",
+                "calendar_error": str(exc),
+                "observation_progress": 0,
+                "observation_target": observation_target,
+                "real_success_trading_days": 0,
+                "consecutive_trading_days": 0,
+                "state_dir": str(config.state_dir),
+                "start_date": None,
+                "last_date": None,
+                "violations": ["交易日历不可用，无法生成预期交易日序列（fail-closed）"],
+            }
+
+    records = store.list_runs(TaskType.DAILY)
+    by_date = {r.as_of_date: r for r in records}
+    if not by_date:
+        return {
+            "mode": "track",
+            "observation_progress": 0,
+            "observation_target": observation_target,
+            "real_success_trading_days": 0,
+            "consecutive_trading_days": 0,
+            "state_dir": str(config.state_dir),
+            "start_date": None,
+            "last_date": None,
+            "violations": [],
+        }
+
+    # 启动日 = 最早运行记录；用交易日历从启动日起取连续 N 个预期交易日。
+    start_date = min(by_date)
+    expected_days: list[date] = []
+    d = start_date
+    try:
+        for _ in range(observation_target):
+            expected_days.append(d)
+            d = calendar.next_trading_day(d, inclusive=False)
+    except CalendarUnavailableError:
+        # 日历覆盖不足（真实部署中日历通常延伸到当前日期，属正常）。
+        pass
+
+    seen_orders: set[str] = set()
+    violations: list[str] = []
+    checked: list[dict[str, Any]] = []
     consecutive = 0
-    prev = None
-    for d in success_days:
-        if prev is None or (d - prev).days == 1:
+    for i, day in enumerate(expected_days):
+        rec = by_date.get(day)
+        day_ok = True
+        issues: list[str] = []
+        rep_dir = config.reports_dir / "daily" / day.isoformat()
+
+        if rec is None:
+            day_ok = False
+            issues.append("运行记录缺失")
+        elif rec.state is not RunState.SUCCESS or rec.exit_code != 0:
+            day_ok = False
+            issues.append(f"非 SUCCESS：{rec.state.value} / exit {rec.exit_code}")
+        else:
+            # 产物齐全
+            required = [
+                "run.json",
+                "manifest.json",
+                "accounts.json",
+                "simulated-orders.json",
+                "signals.json",
+            ]
+            missing = [n for n in required if not (rep_dir / n).exists()]
+            if missing:
+                day_ok = False
+                issues.append(f"产物缺失: {', '.join(missing)}")
+            else:
+                # manifest 可复算
+                try:
+                    verify_manifest(rep_dir / "manifest.json", config=config)
+                except Exception as exc:  # noqa: BLE001
+                    day_ok = False
+                    issues.append(f"manifest 校验失败: {exc}")
+                # 账务恒等式 + 负现金
+                try:
+                    accs = json.loads(
+                        (rep_dir / "accounts.json").read_text(encoding="utf-8")
+                    )
+                    for a in accs["accounts"]:
+                        eq = accs["equity"][a["account_id"]]
+                        if Decimal(a["cash"]) + Decimal(eq["position_value"]) != Decimal(
+                            eq["total_equity"]
+                        ):
+                            day_ok = False
+                            issues.append(
+                                f"账务恒等式违规: {a['account_id']} "
+                                f"cash={a['cash']} + pos={eq['position_value']} "
+                                f"!= equity={eq['total_equity']}"
+                            )
+                        if Decimal(a["cash"]) < 0:
+                            day_ok = False
+                            issues.append(f"负现金: {a['account_id']} cash={a['cash']}")
+                except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                    day_ok = False
+                    issues.append(f"accounts.json 读取失败: {exc}")
+                # 重复订单（unique_key / order_id 全窗口唯一）
+                try:
+                    ords = json.loads(
+                        (rep_dir / "simulated-orders.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )["orders"]
+                    for o in ords:
+                        for key in ("unique_key", "order_id"):
+                            val = o.get(key)
+                            if val is None:
+                                continue
+                            if val in seen_orders:
+                                day_ok = False
+                                issues.append(f"重复订单 {key}={val}")
+                            seen_orders.add(val)
+                except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                    day_ok = False
+                    issues.append(f"simulated-orders.json 读取失败: {exc}")
+
+        checked.append({
+            "date": day.isoformat(),
+            "day_index": i + 1,
+            "ok": day_ok,
+            "state": rec.state.value if rec is not None else "MISSING",
+            "issues": issues,
+        })
+        if day_ok:
             consecutive += 1
         else:
-            consecutive = 1
-        prev = d
-    observed = min(consecutive, OBSERVATION_DAYS)
+            violations.extend(f"{day.isoformat()}: {msg}" for msg in issues)
+            break  # 连续窗口中断：只统计从启动日起的连续达标段
+
     return {
         "mode": "track",
-        "real_success_trading_days": len(success_days),
+        "observation_progress": consecutive,
+        "observation_target": observation_target,
+        "real_success_trading_days": sum(
+            1 for r in records if r.state is RunState.SUCCESS
+        ),
         "consecutive_trading_days": consecutive,
-        "observation_progress": observed,  # min(consecutive, 60)
-        "observation_target": OBSERVATION_DAYS,
-        "state_dir": str(real_dir),
-        "start_date": success_days[0].isoformat() if success_days else None,
-        "last_date": success_days[-1].isoformat() if success_days else None,
+        "expected_trading_days": len(expected_days),
+        "start_date": start_date.isoformat(),
+        "last_date": checked[-1]["date"] if checked else None,
+        "state_dir": str(config.state_dir),
+        "violations": violations,
+        "daily": checked,
+        "calendar_coverage": len(expected_days) < observation_target,
     }
 
 
@@ -229,8 +376,10 @@ def _render_md(summary: dict[str, Any]) -> str:
     lines = ["# Gate 4B 观察报告：连续 60 个交易日自动运行", ""]
     if summary["mode"] == "track":
         t = summary
-        if t["real_success_trading_days"] == 0:
+        if t["real_success_trading_days"] == 0 and not t["start_date"]:
             status = "**Gate 4B continuous operation：NOT STARTED（0/60）**"
+        elif t.get("calendar_error"):
+            status = "**Gate 4B continuous operation：无法判定（交易日历不可用）**"
         elif t["observation_progress"] >= t["observation_target"]:
             status = "**Gate 4B continuous operation：达标（60/60）**"
         else:
@@ -244,15 +393,51 @@ def _render_md(summary: dict[str, Any]) -> str:
             status,
             "",
             f"- 真实自动任务累计 SUCCESS 交易日：{t['real_success_trading_days']}",
-            f"- 自启动日起连续交易日：{t['consecutive_trading_days']}（按实际交易日累计）",
-            f"- 观察起始日：{t['start_date'] or '—'}（真实自动任务启动日期）",
-            f"- 最近交易日：{t['last_date'] or '—'}",
+            f"- 自启动日起按交易日历连续达标：{t['consecutive_trading_days']}（预期 "
+            f"{t.get('expected_trading_days', t['observation_target'])} 个交易日）",
+            f"- 观察起始日（真实自动任务启动日期）：{t['start_date'] or '—'}",
+            f"- 最近复核交易日：{t['last_date'] or '—'}",
             f"- 状态目录：`{t['state_dir']}`",
             "",
             "> 进度由 `scripts/gate4b_observation.py --mode track` 从真实运行记录实时计算，"
-            "不是预生成快照。",
+            "并**按交易日历逐日复核**（记录 SUCCESS/exit 0、产物齐全、manifest 可复算、"
+            "无重复订单、账务恒等式成立、现金非负）；任何一天不过即中断连续计数，"
+            "周末等非交易日由日历自动跳过，不会重置计数。",
             "",
         ]
+        if t.get("calendar_error"):
+            lines += [
+                "> ⚠️ **交易日历不可用（fail-closed）**：`data/metadata/trade_calendar.parquet` "
+                "缺失或不可读，无法生成预期交易日序列，进度暂不可计算。",
+                f"> `{t['calendar_error']}`",
+                "",
+                "> 请先执行 `ashare-quant fetch`（或等价数据准备）生成真实交易日历后重跑本脚本。",
+                "",
+            ]
+        if t.get("violations"):
+            lines += [
+                "### 复核不通过明细",
+                "",
+                "| 交易日 | 原因 |",
+                "| --- | --- |",
+            ]
+            for v in t["violations"]:
+                day, _, reason = v.partition(":")
+                lines.append(f"| {day.strip()} | {reason.strip() if reason else '—'} |")
+            lines.append("")
+        elif not t.get("calendar_error") and t.get("daily"):
+            lines += [
+                "### 逐日复核结果（连续达标段）",
+                "",
+                "| 交易日 | 复核 | 运行状态 |",
+                "| --- | --- | --- |",
+            ]
+            for c in t["daily"]:
+                mark = "✓" if c["ok"] else "✗"
+                lines.append(
+                    f"| {c['date']} | {mark} | {c['state']} |"
+                )
+            lines.append("")
     else:
         t = summary["totals"]
         lines += [
@@ -315,10 +500,19 @@ def _render_md(summary: dict[str, Any]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Gate 4B 观察报告生成器")
     parser.add_argument("--mode", choices=["precheck", "track"], default="precheck")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="自动化配置文件路径（默认 config/automation.default.yaml）",
+    )
     args = parser.parse_args()
 
     if args.mode == "track":
-        summary = _track_real()
+        if args.config:
+            config = load_automation_config(args.config)
+            summary = _track_real(config)
+        else:
+            summary = _track_real()
     else:
         summary = _run_replay()
     summary["generated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -331,9 +525,11 @@ def main() -> int:
 
     SUMMARY_JSON.parent.mkdir(parents=True, exist_ok=True)
     SUMMARY_JSON.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
-    OBSERVATION_MD.write_text(_render_md(summary), encoding="utf-8")
+    OBSERVATION_MD.write_text(_render_md(summary), encoding="utf-8", newline="\n")
     print(f"[gate4b:{args.mode}] wrote {SUMMARY_JSON}")
     print(f"[gate4b:{args.mode}] wrote {OBSERVATION_MD}")
     return 0
