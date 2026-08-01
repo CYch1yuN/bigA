@@ -559,8 +559,18 @@ class SimulatedOrderRecord:
             sig_hash=self.signal_hash,
         )
 
+    @property
+    def order_id(self) -> str:
+        """订单确定性子标识（FR-23）：orders 与 fills 经它关联。
+
+        由订单唯一约束键派生，与运行时间无关——同一逻辑订单在任何一次
+        重跑中都得到同一个 ``order_id``（审计可追溯的前提）。
+        """
+        return hashlib.sha256(self.unique_key.encode("utf-8")).hexdigest()[:24]
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "order_id": self.order_id,
             "account_id": self.account_id,
             "strategy_track": self.strategy_track.value,
             "signal_date": _d_to_str(self.signal_date),

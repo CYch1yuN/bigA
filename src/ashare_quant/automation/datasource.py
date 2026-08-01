@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, Protocol, Sequence
+from typing import Any, Callable, Optional, Protocol, Sequence
 
 import pandas as pd
 
@@ -363,6 +363,7 @@ class InjectedDataSource:
         benchmark: Optional[pd.DataFrame] = None,
         notes: Optional[Sequence[str]] = None,
         enforce_coverage: bool = True,
+        now_fn: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.name = name
         self._quotes = _normalize_quotes(quotes)
@@ -372,6 +373,8 @@ class InjectedDataSource:
         self.benchmark = _normalize_quotes(benchmark) if benchmark is not None else None
         self.notes = list(notes or [])
         self.enforce_coverage = enforce_coverage
+        # FR-23：注入式时钟，保证 provenance.loaded_at 在确定性双跑中一致。
+        self._now_fn = now_fn
 
     def load(
         self,
@@ -398,7 +401,7 @@ class InjectedDataSource:
             synthetic=self.synthetic,
             security_master=self.security_master,
             benchmark=self.benchmark,
-            loaded_at=datetime.now(),
+            loaded_at=self._now_fn(),
             notes=notes,
         )
         if self.enforce_coverage and not bundle.covers(as_of):

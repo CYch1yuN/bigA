@@ -77,6 +77,7 @@ from .datasource import (
 )
 from .models import (
     DataQualityBlockedError,
+    RunState,
     SimulatedAccountState,
     SimulatedOrderRecord,
     StrategyTrack,
@@ -91,7 +92,8 @@ from .simulated_account import (
     assert_simulation_only,
     position_view,
 )
-from .state import StateStore
+from .state import StateStore, atomic_write_text
+from .audit import write_audit_artifacts, write_manifest, verify_manifest
 
 __all__ = [
     "DAILY_STEPS",
@@ -937,9 +939,9 @@ class DailyPipeline:
         equity: dict[str, Any] = ctx.scratch.get("equity", {})
         observation: list[dict[str, Any]] = ctx.scratch.get("observation", [])
         account_list = list(accounts.values())
+        generated_at = ctx.now_fn().isoformat(timespec="seconds")
 
         written: list[Path] = []
-        written.append(write_json_artifact(paths.run_json, ctx.record.to_dict()))
 
         # FR-20：数据更新链路的完整审计明细（含每标的重试/回退/SHA-256/清单）。
         # 仅在真的跑过数据更新器时生成，本地消费模式不产生空壳文件。
@@ -961,12 +963,66 @@ class DailyPipeline:
         )
         paths.report_md.write_text(markdown, encoding="utf-8")
         written.append(paths.report_md)
-        paths.latest_md.parent.mkdir(parents=True, exist_ok=True)
-        paths.latest_md.write_text(markdown, encoding="utf-8")
-        written.append(paths.latest_md)
+
+        # FR-23：审计产物（Parquet 固定列序 / run-summary / 快照 / 规范名报告）。
+        # 不在此写 run.json 与 manifest —— 二者需要在全部产物落盘后编排。
+        audit_written = write_audit_artifacts(
+            record=ctx.record,
+            config=cfg,
+            task_type=TaskType.DAILY,
+            paths=paths,
+            markdown=markdown,
+            accounts=account_list,
+            orders=orders,
+            signals=new_signals,
+            quality=quality.to_dict() if quality is not None else {},
+            equity=equity,
+            observation=observation,
+            generated_at=generated_at,
+        )
+        written.extend(audit_written)
 
         for p in written:
             ctx.add_artifact(p)
+
+        # run.json 的 artifacts 必须包含数据产物、报告与 manifest（FR-23）。
+        try:
+            run_json_rel = str(
+                paths.run_json.resolve().relative_to(cfg.base_dir)
+            ).replace("\\", "/")
+        except ValueError:
+            run_json_rel = str(paths.run_json).replace("\\", "/")
+        if run_json_rel not in ctx.record.artifacts:
+            ctx.record.artifacts.append(run_json_rel)
+        try:
+            manifest_rel = str(
+                (paths.root / "manifest.json").resolve().relative_to(cfg.base_dir)
+            ).replace("\\", "/")
+        except ValueError:
+            manifest_rel = str(paths.root / "manifest.json").replace("\\", "/")
+        if manifest_rel not in ctx.record.artifacts:
+            ctx.record.artifacts.append(manifest_rel)
+        written.append(write_json_artifact(paths.run_json, ctx.record.to_dict()))
+        ctx.add_artifact(paths.run_json)
+
+        # manifest：在全部产物（含 run.json / 报告）落盘之后写，逐文件 SHA-256。
+        manifest_path = write_manifest(
+            record=ctx.record,
+            config=cfg,
+            run_dir=paths.root,
+            generated_at=generated_at,
+        )
+        written.append(manifest_path)
+        ctx.add_artifact(manifest_path)
+
+        # latest：全部文件写完并校验后原子更新；失败运行不得指向半成品。
+        if ctx.record.state is RunState.SUCCESS:
+            verify_manifest(manifest_path, config=cfg)
+            paths.latest_md.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(paths.latest_md, markdown)
+            written.append(paths.latest_md)
+            ctx.add_artifact(paths.latest_md)
+
         return written
 
     def _summary_message(

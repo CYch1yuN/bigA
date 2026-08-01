@@ -66,8 +66,9 @@ from .reporting import (
 )
 from .runner import AutomationRunner, PipelineContext, RunOutcome
 from .simulated_account import SimulatedAccountManager, assert_simulation_only
-from .state import StateStore
+from .state import StateStore, atomic_write_text
 from .weekly_research import run_weekly_research_step
+from .audit import write_audit_artifacts, write_manifest, verify_manifest
 
 __all__ = [
     "WEEKLY_STEPS",
@@ -272,6 +273,7 @@ class WeeklyPipeline:
         # -- 4b. 每周研究（只读研究，复用 Phase 3 ResearchRunner） ------- #
         if self.research_enabled:
             research_dir = self.research_dir or (cfg.base_dir / "research_data")
+            ctx.scratch["research_dir"] = research_dir
             run_weekly_research_step(
                 ctx,
                 research_dir=research_dir,
@@ -708,9 +710,9 @@ class WeeklyPipeline:
         observation: list[dict[str, Any]] = ctx.scratch["observation"]
         accounts: list[SimulatedAccountState] = review["accounts"]
         records: list[RunRecord] = collected["records"]
+        generated_at = ctx.now_fn().isoformat(timespec="seconds")
 
         written: list[Path] = []
-        written.append(write_json_artifact(paths.run_json, ctx.record.to_dict()))
 
         markdown = render_weekly_markdown(
             ctx.record,
@@ -725,12 +727,76 @@ class WeeklyPipeline:
         markdown = self._append_gap_section(markdown, audit)
         paths.report_md.write_text(markdown, encoding="utf-8")
         written.append(paths.report_md)
-        paths.latest_md.parent.mkdir(parents=True, exist_ok=True)
-        paths.latest_md.write_text(markdown, encoding="utf-8")
-        written.append(paths.latest_md)
+
+        # FR-23：审计产物（Parquet 固定列序 / run-summary / 快照 / 规范名报告）。
+        # 周任务不单独执行质量闸门（quality=None）；研究产物经 extra_files 入清单。
+        research_dir: Optional[Path] = ctx.scratch.get("research_dir")
+        extra_files: list[Path] = []
+        if research_dir is not None and Path(research_dir).is_dir():
+            extra_files = [
+                p
+                for p in sorted(Path(research_dir).rglob("*"))
+                if p.is_file() and p.suffix in {".parquet", ".json"}
+            ]
+        audit_written = write_audit_artifacts(
+            record=ctx.record,
+            config=cfg,
+            task_type=TaskType.WEEKLY,
+            paths=paths,
+            markdown=markdown,
+            accounts=accounts,
+            orders=collected["orders"],
+            signals=collected["signals"],
+            quality=None,
+            equity=review["equity"],
+            observation=observation,
+            extra_files=extra_files,
+            generated_at=generated_at,
+        )
+        written.extend(audit_written)
 
         for p in written:
             ctx.add_artifact(p)
+
+        # run.json 的 artifacts 必须包含数据产物、报告与 manifest（FR-23）。
+        try:
+            run_json_rel = str(
+                paths.run_json.resolve().relative_to(cfg.base_dir)
+            ).replace("\\", "/")
+        except ValueError:
+            run_json_rel = str(paths.run_json).replace("\\", "/")
+        if run_json_rel not in ctx.record.artifacts:
+            ctx.record.artifacts.append(run_json_rel)
+        try:
+            manifest_rel = str(
+                (paths.root / "manifest.json").resolve().relative_to(cfg.base_dir)
+            ).replace("\\", "/")
+        except ValueError:
+            manifest_rel = str(paths.root / "manifest.json").replace("\\", "/")
+        if manifest_rel not in ctx.record.artifacts:
+            ctx.record.artifacts.append(manifest_rel)
+        written.append(write_json_artifact(paths.run_json, ctx.record.to_dict()))
+        ctx.add_artifact(paths.run_json)
+
+        # manifest：在全部产物（含 run.json / 报告）落盘之后写，逐文件 SHA-256。
+        manifest_path = write_manifest(
+            record=ctx.record,
+            config=cfg,
+            run_dir=paths.root,
+            extra_files=extra_files,
+            generated_at=generated_at,
+        )
+        written.append(manifest_path)
+        ctx.add_artifact(manifest_path)
+
+        # latest：全部文件写完并校验后原子更新；失败运行不得指向半成品。
+        if ctx.record.state is RunState.SUCCESS:
+            verify_manifest(manifest_path, config=cfg)
+            paths.latest_md.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(paths.latest_md, markdown)
+            written.append(paths.latest_md)
+            ctx.add_artifact(paths.latest_md)
+
         return written
 
     @staticmethod
