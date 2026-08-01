@@ -1,11 +1,10 @@
 {
   "metadata": {
-    "code_commit": "a0e8423749251d6c5217e5961dc2988e5949a408",
+    "code_commit": "fc5bdf468f687f64b6c90de5081b9b30180dff7d",
     "config_hash": "f5e5f42c1e194e4c4b23f7928159bd775d42c5bf0264626bc535c0a62a8851c1",
     "data_hash": "91040e98fa74aa1c104fdfd82a9fe2708859848fba66aeaf231358716a979c70",
     "insufficient_sample": false,
-    "initial_cash": 1000.0,
-    "generated_at": "2026-07-31T23:06:49.128166Z"
+    "initial_cash": 1000.0
   },
   "folds": [
     {

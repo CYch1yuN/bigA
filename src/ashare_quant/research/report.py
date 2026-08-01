@@ -220,7 +220,6 @@ class ResearchReportGenerator:
                 "data_hash": result.data_hash,
                 "insufficient_sample": result.insufficient_sample,
                 "initial_cash": initial_cash,
-                "generated_at": datetime.utcnow().isoformat() + "Z",
             },
             "folds": [self._fold_to_dict(f) for f in result.folds],
             "steady": self._track_to_dict(result.steady),

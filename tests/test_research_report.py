@@ -766,7 +766,6 @@ class TestGenerateJSON:
         assert "data_hash" in meta
         assert "insufficient_sample" in meta
         assert "initial_cash" in meta
-        assert "generated_at" in meta
 
     def test_json_has_steady_and_aggressive_tracks(self):
         """JSON 应包含 steady 和 aggressive 两条轨道。"""
@@ -1152,8 +1151,8 @@ class TestDoubleRunConsistency:
         mc2 = (dir2 / "monte-carlo-summary.json").read_bytes()
         assert mc1 == mc2
 
-    def test_json_excluding_generated_at_identical(self, tmp_path):
-        """不 patch datetime 时，排除 generated_at 字段后 JSON 应完全一致。"""
+    def test_json_byte_identical(self, tmp_path):
+        """不 patch datetime 时，JSON 应字节级完全一致（无时间戳字段）。"""
         dir1 = tmp_path / "run1"
         dir2 = tmp_path / "run2"
 
@@ -1163,12 +1162,8 @@ class TestDoubleRunConsistency:
         result2 = make_mock_research_result()
         _generate_all_to_dir(result2, dir2)
 
-        json1 = json.loads((dir1 / "research-summary.json").read_text(encoding="utf-8"))
-        json2 = json.loads((dir2 / "research-summary.json").read_text(encoding="utf-8"))
-
-        # 删除 generated_at 后比较
-        json1["metadata"].pop("generated_at", None)
-        json2["metadata"].pop("generated_at", None)
+        json1 = (dir1 / "research-summary.json").read_bytes()
+        json2 = (dir2 / "research-summary.json").read_bytes()
         assert json1 == json2
 
     def test_same_result_object_twice_identical(self, tmp_path):
