@@ -70,6 +70,7 @@ from .calendar import TradingCalendar, load_trading_calendar
 from .config import AccountConfig, AutomationConfig
 from .datasource import (
     DataUnavailableError,
+    DataUpdateFailedError,
     MarketDataBundle,
     MarketDataSource,
     lookback_start,
@@ -130,6 +131,25 @@ _REQUIRED_QUOTE_COLUMNS = (
     "close_raw",
     "close_qfq",
 )
+
+
+def _data_update_audit(source: Any) -> Optional[dict[str, Any]]:
+    """从数据源中提取本次数据更新的审计摘要（FR-20）。
+
+    只有 :class:`~.data_update.AutoUpdatingDataSource` 会携带
+    ``last_result``；其余数据源（本地 Parquet、注入式）返回 ``None``，
+    管线照常运行——数据更新器是可选增强，不是硬依赖。
+    """
+    result = getattr(source, "last_result", None)
+    if result is None:
+        return None
+    to_dict = getattr(result, "to_dict", None)
+    if not callable(to_dict):
+        return None
+    try:
+        return dict(to_dict())
+    except Exception:  # noqa: BLE001 - 审计摘要失败不应拖垮当日运行
+        return None
 
 
 # ---------------------------------------------------------------------- #
@@ -459,12 +479,26 @@ class DailyPipeline:
                     "请显式注入 MarketDataSource 或配置本地 curated 数据"
                 )
             start = lookback_start(as_of, cfg.data.lookback_days)
-            bundle = source.load(
-                symbols=list(cfg.data.symbols),
-                start=start,
-                end=as_of,
-                as_of=as_of,
-            )
+            try:
+                bundle = source.load(
+                    symbols=list(cfg.data.symbols),
+                    start=start,
+                    end=as_of,
+                    as_of=as_of,
+                )
+            except DataUnavailableError as exc:
+                # FR-20：data.allow_skip_when_unavailable 决定"缺数据"的性质。
+                # 为 true 时是可接受的跳过（退出码 0）；为 false 时运维要求
+                # 每个交易日都必须有数据，缺数据就是事故，必须落 FAILED（退出码 1），
+                # 否则调度器与告警看到 0 会以为一切正常。
+                if not cfg.data.allow_skip_when_unavailable:
+                    step.detail["allow_skip_when_unavailable"] = False
+                    raise DataUpdateFailedError(
+                        f"数据不可用且 data.allow_skip_when_unavailable=false，"
+                        f"按 fail-closed 判为失败而非跳过：{exc}"
+                    ) from exc
+                step.detail["allow_skip_when_unavailable"] = True
+                raise
             missing = [
                 c for c in _REQUIRED_QUOTE_COLUMNS if c not in bundle.quotes.columns
             ]
@@ -473,6 +507,12 @@ class DailyPipeline:
                     f"行情缺少必需列 {missing}（来源: {bundle.source}）"
                 )
             ctx.scratch["bundle"] = bundle
+            update_audit = _data_update_audit(source)
+            if update_audit is not None:
+                ctx.scratch["data_update"] = update_audit
+                step.detail["data_update"] = {
+                    k: v for k, v in update_audit.items() if k != "outcomes"
+                }
             provenance = bundle.provenance()
             provenance["security_master_available"] = (
                 bundle.security_master is not None and len(bundle.security_master) > 0
@@ -900,6 +940,14 @@ class DailyPipeline:
 
         written: list[Path] = []
         written.append(write_json_artifact(paths.run_json, ctx.record.to_dict()))
+
+        # FR-20：数据更新链路的完整审计明细（含每标的重试/回退/SHA-256/清单）。
+        # 仅在真的跑过数据更新器时生成，本地消费模式不产生空壳文件。
+        data_update: Optional[dict[str, Any]] = ctx.scratch.get("data_update")
+        if data_update:
+            written.append(
+                write_json_artifact(paths.root / "data-update.json", data_update)
+            )
 
         markdown = render_daily_markdown(
             ctx.record,

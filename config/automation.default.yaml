@@ -143,7 +143,8 @@ archive:
 # ---------------------------------------------------------------------- #
 scheduler:
   task_name_prefix: AShareQuantAutomation
-  daily_time: "18:40"
+  # 与 data.ready_time 保持一致；全仓库统一 18:30
+  daily_time: "18:30"
   weekly_day: SAT
   weekly_time: "09:00"
   run_level: LIMITED

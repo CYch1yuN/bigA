@@ -11,8 +11,8 @@
 ------
 1. **恢复**：把上次残留的 ``RUNNING`` 记录显式判为 ``FAILED``（绝不判成功）。
 2. **指纹**：算出确定性 ``run_id``。
-3. **幂等**：同一 ``run_id`` 已有 ``SUCCESS`` 记录且未 ``--force-retry`` 时，
-   直接复用，不重复扣款、不重复写报告。
+3. **幂等**：该业务日已有 ``SUCCESS`` 记录时直接复用，不重复扣款、不重复写报告；
+   ``--force-retry`` 也不能改写成功记录（见下）。
 4. **加锁**：拿不到活跃锁 -> ``BLOCKED_LOCKED``（退出码 4）。
 5. **执行**：逐步跑管线，异常按类型映射到终态。
 6. **收尾**：原子落盘状态 -> 触发/清除告警 -> 释放锁 -> 返回退出码。
@@ -33,6 +33,26 @@
 
 交易日历不可用**不是**跳过而是失败：无法确认今天是不是交易日，
 就没有资格宣称"今天没什么可做的"。
+
+force-retry 的适用边界（FR-25）
+-------------------------------
+``--force-retry`` **不是**万能钥匙，只对"确实需要重试"的既有终态放行：
+
+=================================  =========================================
+既有终态                             force-retry
+=================================  =========================================
+``FAILED``                         允许（含中断恢复判定出的 FAILED）
+``SKIPPED_DATA_UNAVAILABLE``       允许（补数后重试）
+``BLOCKED_DATA_QUALITY``           允许（修数后重试）
+``SUCCESS``                        **拒绝** —— 会二次记账，属审计事故
+``SKIPPED_NON_TRADING_DAY``        拒绝 —— 重跑不会有新结论
+``BLOCKED_LOCKED``                 拒绝 —— 正确处置是等待而非抢跑
+``BLOCKED_NOT_ELIGIBLE``           拒绝 —— 不得用于绕过安全边界
+=================================  =========================================
+
+适用性判定发生在**指纹比较之前**：改配置或换 commit 导致指纹变化，
+不能成为绕过该闸门的后门。被拒绝时立即返回既有记录，
+模拟账户、观察窗口与模拟订单一律不动。
 """
 from __future__ import annotations
 
@@ -50,6 +70,8 @@ from .idempotency import RunFingerprint, build_fingerprint
 from .locking import RunLock
 from .logging_setup import AutomationLogger, build_logger
 from .models import (
+    FORCE_RETRY_ALLOWED_STATES,
+    FORCE_RETRY_REJECT_REASON,
     AutomationError,
     CalendarUnavailableError,
     DataQualityBlockedError,
@@ -60,6 +82,7 @@ from .models import (
     StepResult,
     StepStatus,
     TaskType,
+    force_retry_allowed,
 )
 from .state import StateStore
 
@@ -236,6 +259,8 @@ class RunOutcome:
     artifacts: list[Path] = field(default_factory=list)
     reused: bool = False
     lock: dict[str, Any] = field(default_factory=dict)
+    force_retry_rejected: bool = False
+    reject_reason: Optional[str] = None
 
     @property
     def state(self) -> RunState:
@@ -252,6 +277,8 @@ class RunOutcome:
             "alert": self.alert,
             "reused": self.reused,
             "lock": self.lock,
+            "force_retry_rejected": self.force_retry_rejected,
+            "reject_reason": self.reject_reason,
         }
 
 
@@ -336,7 +363,10 @@ class AutomationRunner:
         Args:
             pipeline: 业务管线回调，接收 ``PipelineContext``。
             as_of_date: 业务基准日。
-            force_retry: 是否忽略已有成功记录强制重跑（attempt 递增）。
+            force_retry: 是否对可重试终态强制重跑（attempt 递增）。
+                仅 ``FAILED`` / ``SKIPPED_DATA_UNAVAILABLE`` /
+                ``BLOCKED_DATA_QUALITY`` 放行；其余终态（尤其 ``SUCCESS``）
+                一律拒绝并原样返回既有记录。
             dry_run: 只演练不落盘（账户状态与报告不写入）。
             extra_inputs: 额外参与输入哈希的结构化输入。
 
@@ -370,29 +400,78 @@ class AutomationRunner:
                 run_ids=[r.run_id for r in recovered],
             )
 
-        # 3) 幂等：已有成功记录直接复用
+        # 3) 幂等：已有成功记录直接复用；force-retry 仅对可重试终态放行（FR-25）
         existing = self.state_store.load_run(self.task_type, as_of_date)
         attempt = 1
         if existing is not None:
             attempt = int(existing.attempt)
             same_fingerprint = existing.run_id == fingerprint.run_id
-            if (
-                same_fingerprint
-                and existing.state is RunState.SUCCESS
-                and not force_retry
-            ):
-                logger.info(
-                    "idempotent_reuse",
-                    "该业务日已成功运行，直接复用既有结果",
+
+            # 3a) force-retry 适用性闸门：先于任何指纹比较执行。
+            #     指纹变化（改配置 / 换 commit）不得成为绕过该闸门的后门。
+            if force_retry and not force_retry_allowed(existing.state):
+                allowed = "、".join(
+                    sorted(s.value for s in FORCE_RETRY_ALLOWED_STATES)
+                )
+                message = (
+                    f"拒绝 force-retry：该业务日既有终态为 {existing.state.value}，"
+                    f"不在可重试集合内（允许：{allowed}）。"
+                    "既有运行记录、模拟账户、观察窗口与模拟订单均保持不变。"
+                )
+                logger.warning(
+                    "force_retry_rejected",
+                    message,
                     run_id=existing.run_id,
                     as_of_date=as_of_date.isoformat(),
+                    existing_state=existing.state.value,
+                    fingerprint_changed=not same_fingerprint,
+                    allowed_states=sorted(s.value for s in FORCE_RETRY_ALLOWED_STATES),
                 )
                 return RunOutcome(
                     record=existing,
                     exit_code=existing.exit_code,
                     reused=True,
-                    alert={"alerted": False, "reason": "idempotent_reuse"},
+                    force_retry_rejected=True,
+                    reject_reason=FORCE_RETRY_REJECT_REASON,
+                    alert={
+                        "alerted": False,
+                        "reason": FORCE_RETRY_REJECT_REASON,
+                        "existing_state": existing.state.value,
+                    },
                 )
+
+            # 3b) 既有 SUCCESS 一律复用，指纹变化也不重跑。
+            #     该业务日已产生模拟成交与观察窗口计数，重算即二次记账。
+            if existing.state is RunState.SUCCESS:
+                reason = (
+                    "idempotent_reuse"
+                    if same_fingerprint
+                    else "idempotent_reuse_fingerprint_changed"
+                )
+                detail = (
+                    "该业务日已成功运行，直接复用既有结果"
+                    if same_fingerprint
+                    else (
+                        "该业务日已成功运行；输入指纹已变化，"
+                        "但成功记录不可回溯改写，仍复用既有结果"
+                    )
+                )
+                logger.info(
+                    reason,
+                    detail,
+                    run_id=existing.run_id,
+                    as_of_date=as_of_date.isoformat(),
+                    fingerprint_changed=not same_fingerprint,
+                    new_run_id=fingerprint.run_id,
+                )
+                return RunOutcome(
+                    record=existing,
+                    exit_code=existing.exit_code,
+                    reused=True,
+                    reject_reason=(None if same_fingerprint else reason),
+                    alert={"alerted": False, "reason": reason},
+                )
+
             if force_retry or not same_fingerprint:
                 attempt = attempt + 1
 

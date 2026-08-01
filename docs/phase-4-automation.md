@@ -122,7 +122,7 @@ ashare-quant automation uninstall [--config PATH] [--task-prefix PREFIX] [--dry-
 
 `scheduler.py` 只负责**渲染** `schtasks` 命令，不依赖 Windows 即可单测（dry-run 友好）：
 
-- 每日任务：默认 `18:40` 触发，调用 `run_daily.ps1`。
+- 每日任务：默认 `18:30` 触发，调用 `run_daily.ps1`（与 `data.ready_time` 同一时刻，数据未就绪时由管线内重试兜底）。
 - 每周任务：默认周六 `09:00` 触发，调用 `run_weekly.ps1`。
 - 运行级别 `LIMITED`，工作目录为仓库根。
 - `install` / `uninstall` 子命令把渲染好的命令交给 `scripts/install_scheduler.ps1` / `uninstall_scheduler.ps1` 经 PowerShell 实际注册（需 `--yes` 确认执行，否则只打印）。
@@ -158,7 +158,26 @@ reports/phase-4/
 ## 幂等性
 
 - `runner.build_fingerprint` 对代码提交、配置哈希、输入行情哈希、业务日、标的、回看天数联合哈希，得到确定性 `run_id`。
-- 同一 `run_id` 已有 `SUCCESS` 记录且未 `--force-retry` 时，直接复用，不重复扣款、不重复写报告。
+- 该业务日已有 `SUCCESS` 记录时直接复用，不重复扣款、不重复写报告。
+- **指纹变化也不重跑成功记录**：改配置或换 commit 会让 `run_id` 变化，但该业务日的模拟成交与观察窗口计数已经落账，重算即二次记账，因此仍然复用既有结果（原因码 `idempotent_reuse_fingerprint_changed`）。
+
+### `--force-retry` 的适用边界（FR-25）
+
+`--force-retry` 不是万能钥匙，只对"确实需要重试"的既有终态放行：
+
+| 既有终态 | `--force-retry` | 理由 |
+| --- | --- | --- |
+| `FAILED` | ✅ 允许 | 运行没跑完；中断恢复判定出的 `FAILED` 同样适用 |
+| `SKIPPED_DATA_UNAVAILABLE` | ✅ 允许 | 数据源当时不可用，补数后重试正当 |
+| `BLOCKED_DATA_QUALITY` | ✅ 允许 | 质量闸门当时拦截，修数后重试正当 |
+| `SUCCESS` | ❌ 拒绝 | 会二次改写资金与观察窗口，属审计事故 |
+| `SKIPPED_NON_TRADING_DAY` | ❌ 拒绝 | 不是交易日，重跑不会有新结论 |
+| `BLOCKED_LOCKED` | ❌ 拒绝 | 另一实例在跑，正确处置是等待而非抢跑 |
+| `BLOCKED_NOT_ELIGIBLE` | ❌ 拒绝 | 不得用于绕过安全边界 |
+
+适用性判定发生在**指纹比较之前**——改配置或换 commit 不能成为绕过闸门的后门。被拒绝时 CLI 打印原因码 `force_retry_not_applicable` 并原样返回既有记录，**模拟账户、观察窗口与模拟订单一律不动**。
+
+被拒绝的终态并非无法重跑：它们本就不是 `SUCCESS`，常规 `daily` / `weekly` 路径不会命中幂等复用分支，直接再跑一次即可。
 
 ## 已知缺陷与修复（本阶段）
 

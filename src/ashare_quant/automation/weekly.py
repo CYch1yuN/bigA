@@ -67,6 +67,7 @@ from .reporting import (
 from .runner import AutomationRunner, PipelineContext, RunOutcome
 from .simulated_account import SimulatedAccountManager, assert_simulation_only
 from .state import StateStore
+from .weekly_research import run_weekly_research_step
 
 __all__ = [
     "WEEKLY_STEPS",
@@ -82,6 +83,7 @@ WEEKLY_STEPS: tuple[str, ...] = (
     "calendar",
     "collect_runs",
     "coverage_audit",
+    "weekly_research",
     "account_review",
     "observation_review",
     "archive",
@@ -171,6 +173,9 @@ class WeeklyPipeline:
     calendar: Optional[TradingCalendar] = None
     backtest_config: BacktestConfig = field(default_factory=BacktestConfig)
     skip_archive: bool = False
+    # 每周研究步骤：复用 Phase 3 ResearchRunner 跑真实完整周研究。
+    research_dir: Optional[Path] = None
+    research_enabled: bool = True
 
     # ------------------------------------------------------------------ #
     def __call__(self, ctx: PipelineContext) -> None:
@@ -263,6 +268,15 @@ class WeeklyPipeline:
                     missing_days=audit["missing_days"],
                     unhealthy_days=audit["unhealthy_days"],
                 )
+
+        # -- 4b. 每周研究（只读研究，复用 Phase 3 ResearchRunner） ------- #
+        if self.research_enabled:
+            research_dir = self.research_dir or (cfg.base_dir / "research_data")
+            run_weekly_research_step(
+                ctx,
+                research_dir=research_dir,
+                code_commit=getattr(cfg, "code_commit", None),
+            )
 
         # -- 5. 账户复核（只读） ----------------------------------------- #
         with ctx.step("account_review") as step:
@@ -666,6 +680,7 @@ class WeeklyPipeline:
                     "stats": stats,
                     "gate": ctx.scratch["gate"],
                     "archive": archive.to_dict(),
+                    "research": ctx.scratch.get("weekly_research"),
                     "daily_runs": [r.to_dict() for r in records],
                 },
             )

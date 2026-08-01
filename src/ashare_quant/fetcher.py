@@ -67,15 +67,32 @@ class FetchManager:
     主源重试耗尽后自动回退到备用源（可禁用）。
     """
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        *,
+        provider_factory: Optional[Callable[[str], DataProvider]] = None,
+    ) -> None:
+        """
+        参数:
+            config: 应用配置（重试次数、请求间隔、主备源名称）。
+            provider_factory: 可选的提供器工厂 ``name -> DataProvider``。
+                为 ``None`` 时使用真实的 AKShare / BaoStock 提供器（默认行为不变）。
+                注入点存在的唯一目的是**离线可测**：让测试在不联网的前提下
+                走完与线上完全相同的重试 / 回退 / 清单代码路径，
+                而不是给生产环境留一条伪造数据源的后门。
+        """
         self.config = config
         self.max_retries: int = config.providers.max_retries
         self.request_interval: float = config.providers.request_interval_seconds
         self.primary_name: str = config.providers.primary
         self.fallback_name: str = config.providers.fallback
+        self._provider_factory = provider_factory
 
     def _get_provider(self, source: str) -> DataProvider:
         """根据名称获取提供器实例。"""
+        if self._provider_factory is not None:
+            return self._provider_factory(source)
         if source == SOURCE_AKSHARE:
             return AKShareProvider()
         if source == SOURCE_BAOSTOCK:

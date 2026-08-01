@@ -1,4 +1,4 @@
-<Requires -Version 5.1>
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     注册 Phase 4 自动化所需的 Windows 任务计划（每日盘后 + 每周六汇总）。
@@ -19,7 +19,7 @@
     仓库根目录；默认取本脚本上级目录。
 
 .PARAMETER DailyTime
-    每日任务触发时间（HH:MM，默认 18:40）。
+    每日任务触发时间（HH:MM，默认 18:30）。
 
 .PARAMETER WeeklyDay
     每周任务触发星期（MON..SUN，默认 SAT）。
@@ -45,7 +45,7 @@ param(
     [string]$TaskPrefix = "AShareQuantAutomation",
     [string]$PythonExe = "",
     [string]$RepoRoot = "",
-    [string]$DailyTime = "18:40",
+    [string]$DailyTime = "18:30",
     [string]$WeeklyDay = "SAT",
     [string]$WeeklyTime = "09:00",
     [string]$RunLevel = "LIMITED",
@@ -53,6 +53,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- 编码自检（必须紧跟 ErrorActionPreference） ------------------------- #
+# 本文件以 UTF-8 with BOM 保存：Windows PowerShell 5.1 缺少 BOM 时会按系统
+# ANSI 代码页（简体中文 = GBK）解析源文件，中文字面量会退化成乱码。
+# BOM 让 5.1 与 7.x 都走 UTF-8 分支。下面几行进一步保证子进程输出也按
+# UTF-8 呈现：Python 端固定用 UTF-8 写 stdout，控制台若停在 GBK 代码页
+# 同样会糊成乱码。
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { }
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONUTF8 = '1'
+
 
 if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path

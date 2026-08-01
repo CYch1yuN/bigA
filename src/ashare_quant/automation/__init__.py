@@ -22,14 +22,15 @@
     state.py              运行状态仓库（原子写入）
     logging_setup.py      结构化 JSONL 日志 + 敏感字段脱敏
     alerts.py             本机告警（标记文件 / 最新失败报告 / 可选 webhook）
-    data_update.py        数据更新 + 质量闸门
-    signals.py            研究信号生成（复用 Phase 3 策略）
+    datasource.py         行情数据源抽象（可注入、可离线、不可伪造）
+    data_update.py        真实数据更新器（复用 Phase 1 抓取/落盘/清单链路）
     simulated_account.py  模拟账户（复用 Phase 2 撮合与风控）
     reporting.py          运行报告与观察窗口报告
-    daily.py              每日任务编排
+    daily.py              每日任务编排（信号生成复用 Phase 3 策略）
     weekly.py             每周任务编排
     archive.py            结果归档与保留策略
     scheduler.py          Windows 任务计划命令生成（支持 dry-run）
+    cli.py                automation 子命令入口
     runner.py             状态机驱动器（锁 / 幂等 / 状态落盘的统一入口）
 """
 from __future__ import annotations

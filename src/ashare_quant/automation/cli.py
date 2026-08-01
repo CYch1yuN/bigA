@@ -26,7 +26,7 @@ from typing import Any, Optional
 
 from .calendar import load_trading_calendar
 from .config import AutomationConfig, default_automation_config_path, load_automation_config
-from .models import TaskType
+from .models import FORCE_RETRY_ALLOWED_STATES, TaskType
 from .reporting import render_status_markdown
 from .scheduler import build_scheduler_plan
 from .simulated_account import SimulatedAccountManager, assert_simulation_only
@@ -336,6 +336,17 @@ def cmd_rerun(args: argparse.Namespace) -> int:
                 force_retry=True,
             )
 
+    if out.force_retry_rejected:
+        # FR-25：force-retry 只对可重试终态放行，拒绝时必须让用户看懂为什么。
+        allowed = "、".join(sorted(s.value for s in FORCE_RETRY_ALLOWED_STATES))
+        print(
+            f"rerun {task} {as_of.isoformat()}: 已拒绝 "
+            f"(既有终态 {out.state.value}，exit={out.exit_code})"
+        )
+        print(f"可强制重试的终态仅限：{allowed}")
+        print("既有运行记录、模拟账户、观察窗口与模拟订单均未改动。")
+        return out.exit_code
+
     print(f"rerun {task} {as_of.isoformat()}: {out.state.value} (exit={out.exit_code})")
     print(out.record.message)
     return out.exit_code
@@ -438,7 +449,14 @@ def register(subparsers: Any) -> None:
     p_v.set_defaults(func=cmd_verify)
 
     # rerun
-    p_r = auto.add_parser("rerun", help="强制重跑某次每日/每周运行")
+    p_r = auto.add_parser(
+        "rerun",
+        help=(
+            "强制重跑某次每日/每周运行（仅限 FAILED / "
+            "SKIPPED_DATA_UNAVAILABLE / BLOCKED_DATA_QUALITY；"
+            "已 SUCCESS 的业务日会被拒绝）"
+        ),
+    )
     p_r.add_argument("--task", choices=["daily", "weekly"], default="daily")
     p_r.add_argument("--date", help="业务日 YYYY-MM-DD")
     p_r.add_argument("--config", help="自动化配置 YAML 路径")

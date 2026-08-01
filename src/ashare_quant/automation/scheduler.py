@@ -5,7 +5,7 @@
 与 PowerShell 脚本保持语义一致，可作为验证基准。
 
 两条任务：
-- ``<prefix>-Daily``    每个交易日盘后（默认 18:40）跑每日管线
+- ``<prefix>-Daily``    每个交易日盘后（默认 18:30）跑每日管线
 - ``<prefix>-Weekly``   每周六（默认 09:00）跑每周汇总
 
 安全边界：动作指向 ``scripts/run_daily.ps1`` / ``run_weekly.ps1``，

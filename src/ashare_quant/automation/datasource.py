@@ -30,12 +30,15 @@ from .models import AutomationError
 
 __all__ = [
     "DataUnavailableError",
+    "DataUpdateFailedError",
     "MarketDataBundle",
     "MarketDataSource",
     "LocalParquetDataSource",
     "InjectedDataSource",
     "UnavailableDataSource",
     "QUOTE_COLUMNS",
+    "normalize_quotes",
+    "require_quote_columns",
 ]
 
 
@@ -62,6 +65,22 @@ class DataUnavailableError(AutomationError):
     """数据源不可用（网络受限、文件缺失、覆盖不足等）。
 
     抛出该异常意味着**本次运行没有可信输入**，管线必须跳过而不是硬撑。
+    由 :mod:`ashare_quant.automation.runner` 映射为
+    ``SKIPPED_DATA_UNAVAILABLE``（退出码 0）——"今天没数据"不是事故。
+    """
+
+
+class DataUpdateFailedError(AutomationError):
+    """数据不可用，且配置**不允许**降级为"跳过"（FR-20）。
+
+    ``data.allow_skip_when_unavailable`` 为 ``false`` 时，运维的意思是
+    "这条流水线每天都必须有数据，缺数据就是事故"。此时不能悄悄记成
+    ``SKIPPED``（退出码 0，调度器看不出异常），必须落到 ``FAILED``（退出码 1）
+    让 Windows 任务计划程序与告警真正响起来。
+
+    本异常刻意**不继承** :class:`DataUnavailableError`——继承会被
+    ``_EXCEPTION_STATE_MAP`` 优先匹配成 ``SKIPPED_DATA_UNAVAILABLE``，
+    等于给 fail-closed 开了后门。落到默认分支即 ``FAILED``，正是所需。
     """
 
 
@@ -180,6 +199,20 @@ def _check_columns(df: pd.DataFrame, where: str) -> None:
     missing = [c for c in QUOTE_COLUMNS if c not in df.columns]
     if missing:
         raise DataUnavailableError(f"{where}: 行情缺少必需列 {missing}")
+
+
+def normalize_quotes(df: pd.DataFrame) -> pd.DataFrame:
+    """公开包装：规范行情列类型，供同包的数据更新器复用。
+
+    与内部 ``_normalize_quotes`` 行为完全一致；单独暴露是为了让
+    :mod:`ashare_quant.automation.data_update` 不必依赖下划线私有名。
+    """
+    return _normalize_quotes(df)
+
+
+def require_quote_columns(df: pd.DataFrame, where: str) -> None:
+    """公开包装：校验行情必需列齐全，缺列即抛 ``DataUnavailableError``。"""
+    _check_columns(df, where)
 
 
 def _slice(

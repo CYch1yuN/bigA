@@ -26,6 +26,9 @@ __all__ = [
     "TERMINAL_STATES",
     "BLOCKED_STATES",
     "SKIPPED_STATES",
+    "FORCE_RETRY_ALLOWED_STATES",
+    "FORCE_RETRY_REJECT_REASON",
+    "force_retry_allowed",
     "EXIT_CODES",
     "exit_code_for",
     "StrategyTrack",
@@ -137,6 +140,43 @@ SKIPPED_STATES: frozenset[RunState] = frozenset(
         RunState.SKIPPED_DATA_UNAVAILABLE,
     }
 )
+
+FORCE_RETRY_ALLOWED_STATES: frozenset[RunState] = frozenset(
+    {
+        RunState.FAILED,
+        RunState.SKIPPED_DATA_UNAVAILABLE,
+        RunState.BLOCKED_DATA_QUALITY,
+    }
+)
+"""``--force-retry`` 唯一允许作用的既有终态集合（FR-25）。
+
+为什么只有这三个：
+
+- ``FAILED``：运行确实没跑完，重试是正当诉求。
+  中断恢复（残留 ``RUNNING``）会被显式判定为 ``FAILED``，因此天然落入本集合。
+- ``SKIPPED_DATA_UNAVAILABLE``：数据源当时不可用，补数后重试是正当诉求。
+- ``BLOCKED_DATA_QUALITY``：质量闸门当时拦截，修数后重试是正当诉求。
+
+明确排除：
+
+- ``SUCCESS``：该业务日已产生模拟成交、账户变动与观察窗口计数。
+  强制重跑会二次改写资金与观察窗口，属于**审计事故**，必须拒绝。
+- ``SKIPPED_NON_TRADING_DAY``：不是交易日，重跑不会有任何新结论。
+- ``BLOCKED_LOCKED``：另一实例正在跑，正确处置是等待而不是抢跑。
+- ``BLOCKED_NOT_ELIGIBLE``：安全边界拒绝，重试不得用于绕过边界。
+
+对被排除的状态，常规（非 force）重跑路径依旧可用——因为它们本就不是
+``SUCCESS``，不会命中幂等复用分支。``--force-retry`` 只是不再充当万能钥匙。
+"""
+
+FORCE_RETRY_REJECT_REASON: str = "force_retry_not_applicable"
+"""force-retry 被拒绝时写入日志与运行结果的稳定原因码。"""
+
+
+def force_retry_allowed(state: RunState) -> bool:
+    """判断某个既有终态是否允许 ``--force-retry``。"""
+    return state in FORCE_RETRY_ALLOWED_STATES
+
 
 EXIT_CODES: dict[RunState, int] = {
     RunState.SUCCESS: 0,

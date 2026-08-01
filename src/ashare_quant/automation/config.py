@@ -263,7 +263,11 @@ class SchedulerConfig(BaseModel):
     """Windows 任务计划配置。"""
 
     task_name_prefix: str = "AShareQuantAutomation"
-    daily_time: str = "18:40"
+    # 每日盘后触发时间。与 data.ready_time 保持一致（18:30）：
+    # 该时刻数据源预计就绪，管线内部还有 max_retries 次重试兜底，
+    # 因此不需要再额外留缓冲。全仓库（yaml / PowerShell / 文档 / 测试）
+    # 必须统一为 18:30，任何一处漂移都会让"文档说的"和"实际跑的"对不上。
+    daily_time: str = "18:30"
     weekly_day: str = "SAT"
     weekly_time: str = "09:00"
     run_level: str = "LIMITED"
