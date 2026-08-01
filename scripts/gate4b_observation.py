@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from datetime import date, datetime
@@ -71,8 +72,96 @@ from tests.research_samples import (
 
 ROOT = Path(__file__).resolve().parents[1]
 OBSERVATION_DAYS = 60
+# precheck（正式示例）输出：受 Git 跟踪，保留历史示例语义。
 SUMMARY_JSON = ROOT / "reports" / "phase-4" / "gate4b" / "60d-summary.json"
 OBSERVATION_MD = ROOT / "docs" / "gate4b-observation.md"
+# track（真实观察）默认输出目录：Git 忽略，不得每天改动受跟踪示例文件。
+TRACK_OUTPUT_DIR = ROOT / "state" / "automation" / "gate4b"
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """同目录临时文件 + 原子替换；失败时原文件不受影响。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    _atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def _write_outputs(
+    summary: dict[str, Any], *, output_dir: Optional[Path] = None
+) -> tuple[Path, Path]:
+    """按模式写观察报告与摘要。
+
+    ``precheck``：始终写正式示例目录（``reports/phase-4/gate4b/`` 与 ``docs/``，
+    受 Git 跟踪，保留示例语义）。
+
+    ``track``：默认写 ``state/automation/gate4b/``（Git 忽略，真实观察期间
+    不得每天改动正式示例文件）；可通过 ``output_dir`` 显式覆盖目录。
+    两份输出文件名带 ``track-`` 前缀，避免与 precheck 示例混淆。
+
+    均为原子写入。
+    """
+    if summary["mode"] == "precheck":
+        summary_path, md_path = SUMMARY_JSON, OBSERVATION_MD
+    else:
+        out = Path(output_dir) if output_dir is not None else TRACK_OUTPUT_DIR
+        summary_path = out / "gate4b-track-summary.json"
+        md_path = out / "gate4b-track-observation.md"
+    _atomic_write_json(summary_path, summary)
+    _atomic_write_text(md_path, _render_md(summary))
+    return summary_path, md_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Gate 4B 观察报告生成器")
+    parser.add_argument("--mode", choices=["precheck", "track"], default="precheck")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="自动化配置文件路径（默认 config/automation.default.yaml）",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="track 输出目录（默认 state/automation/gate4b/，Git 忽略；"
+        "precheck 忽略此参数，始终写正式示例目录）",
+    )
+    args = parser.parse_args()
+
+    if args.mode == "track":
+        if args.config:
+            config = load_automation_config(args.config)
+            summary = _track_real(config)
+        else:
+            summary = _track_real()
+    else:
+        summary = _run_replay()
+    summary["generated_at"] = datetime.now().isoformat(timespec="seconds")
+    summary["synthetic"] = args.mode == "precheck"
+    summary["online"] = False
+    summary["disclaimer"] = (
+        "本报告由 scripts/gate4b_observation.py 生成（代码可复现），"
+        "内容为模拟/研究记录，未连接券商、未涉及真实资金。"
+    )
+
+    summary_path, md_path = _write_outputs(
+        summary,
+        output_dir=Path(args.output_dir) if args.output_dir else None,
+    )
+    print(f"[gate4b:{args.mode}] wrote {summary_path}")
+    print(f"[gate4b:{args.mode}] wrote {md_path}")
+    return 0
 
 
 def _synthetic_env(base: Path):
@@ -528,44 +617,6 @@ def _render_md(summary: dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Gate 4B 观察报告生成器")
-    parser.add_argument("--mode", choices=["precheck", "track"], default="precheck")
-    parser.add_argument(
-        "--config",
-        default=None,
-        help="自动化配置文件路径（默认 config/automation.default.yaml）",
-    )
-    args = parser.parse_args()
-
-    if args.mode == "track":
-        if args.config:
-            config = load_automation_config(args.config)
-            summary = _track_real(config)
-        else:
-            summary = _track_real()
-    else:
-        summary = _run_replay()
-    summary["generated_at"] = datetime.now().isoformat(timespec="seconds")
-    summary["synthetic"] = args.mode == "precheck"
-    summary["online"] = False
-    summary["disclaimer"] = (
-        "本报告由 scripts/gate4b_observation.py 生成（代码可复现），"
-        "内容为模拟/研究记录，未连接券商、未涉及真实资金。"
-    )
-
-    SUMMARY_JSON.parent.mkdir(parents=True, exist_ok=True)
-    SUMMARY_JSON.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    OBSERVATION_MD.write_text(_render_md(summary), encoding="utf-8", newline="\n")
-    print(f"[gate4b:{args.mode}] wrote {SUMMARY_JSON}")
-    print(f"[gate4b:{args.mode}] wrote {OBSERVATION_MD}")
-    return 0
 
 
 if __name__ == "__main__":
