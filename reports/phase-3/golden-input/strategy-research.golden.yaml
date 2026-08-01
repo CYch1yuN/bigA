@@ -1,0 +1,76 @@
+# Phase 3 正式研究报告配置（金标准数据）
+# 使用完整参数候选集合：稳健轨 3^4=81 组，激进轨 3^6=729 组（FR-17）。
+# 蒙特卡洛使用 10,000 条路径（FR-14）。
+
+initial_cash: 1000.0
+lot_size: 100
+
+universe:
+  min_listing_days: 120
+  min_valid_days: 15
+  valid_days_window: 20
+  min_turnover: 1000000.0  # 合成数据成交额较低，降低阈值
+  turnover_window: 20
+
+walk_forward:
+  train_years: 1
+  validation_months: 3
+  test_years: 1
+  step_years: 1
+  min_total_years: 2
+
+# 稳健轨：3^4 = 81 组参数候选（FR-17）
+steady:
+  trend_window: [100, 120, 140]
+  momentum_window: [50, 60, 70]
+  volatility_window: [15, 20, 25]
+  minimum_score: [-0.25, 0.0, 0.25]
+
+# 激进轨：3^6 = 729 组参数候选（FR-17）
+aggressive:
+  breakout_window: [15, 20, 25]
+  volume_window: [15, 20, 25]
+  volume_ratio: [1.2, 1.5, 1.8]
+  relative_strength_window: [15, 20, 25]
+  exit_low_window: [8, 10, 12]
+  max_holding_days: [15, 20, 25]
+
+stress:
+  fee_multiplier: 2.0
+  slippage_multiplier: 2.0
+
+monte_carlo:
+  random_seed: 20260731
+  n_paths: 10000            # 正式蒙特卡洛使用 10,000 条路径（FR-14）
+  path_length: 244
+  block_length: 5
+  initial_capital: 1000.0
+  ten_x_target: 10000.0
+  loss_50_threshold: 500.0
+  near_zero_threshold: 100.0
+
+backtest:
+  initial_cash: 1000.0
+  lot_size: 100
+  commission:
+    rate: 0.0003
+    minimum: 5.0
+  stamp_duty:
+    rate: 0.001
+  transfer_fee:
+    rate: 0.00001
+  slippage:
+    bps: 10.0
+    tick_size: 0.01
+  limit:
+    main_ratio: 0.10
+    star_ratio: 0.20
+    szse_ratio: 0.10
+    bjse_ratio: 0.30
+    st_ratio: 0.05
+    tick_size: 0.01
+  risk:
+    enable_single_position_limit: true
+    max_position_value_ratio: 1.0
+  universe:
+    min_lot_value: 1000.0

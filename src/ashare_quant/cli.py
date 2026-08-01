@@ -365,6 +365,145 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_research(args: argparse.Namespace) -> int:
+    """运行策略研究（Phase 3）。
+
+    读取 curated 日行情、历史状态表、基准数据和策略研究配置，
+    运行双轨策略滚动样本外验证，输出 JSON、Markdown 和 Parquet 报告。
+    """
+    import yaml as yaml_mod
+
+    from .backtest.config import BacktestConfig, load_backtest_config, default_backtest_config_path
+    from .research.benchmarks import BenchmarkData, load_benchmarks, BenchmarkMissingError
+    from .research.monte_carlo import MonteCarloConfig
+    from .research.universe import HistoricalStatusTable, HistoricalUniverseFilter, load_historical_status
+    from .research.walk_forward import WalkForwardConfig
+    from .research.analysis import ResearchRunner
+    from .research.report import ResearchReportGenerator
+
+    # 加载策略研究配置
+    config_path = args.config or str(
+        Path(__file__).resolve().parent.parent.parent / "config" / "strategy-research.default.yaml"
+    )
+    with open(config_path, encoding="utf-8") as f:
+        research_cfg = yaml_mod.safe_load(f)
+
+    # 加载回测配置
+    bt_config_path = args.backtest_config or str(
+        Path(__file__).resolve().parent.parent.parent / "config" / "backtest.default.yaml"
+    )
+    bt_config = load_backtest_config(bt_config_path)
+
+    # 加载行情数据
+    quotes = pd.read_parquet(args.quotes)
+
+    # 加载历史状态表
+    if not args.status:
+        print("错误: research 命令需要 --status 参数（历史状态表）", file=sys.stderr)
+        return 1
+    status_table = load_historical_status(args.status)
+
+    # 加载基准数据
+    if not args.benchmarks:
+        print("错误: research 命令需要 --benchmarks 参数（基准数据）", file=sys.stderr)
+        return 1
+    try:
+        benchmark = load_benchmarks(args.benchmarks)
+    except BenchmarkMissingError as e:
+        print(f"错误: 基准数据缺失: {e}", file=sys.stderr)
+        return 1
+
+    # 构建 UniverseFilter
+    universe_cfg = research_cfg.get("universe", {})
+    universe_filter = HistoricalUniverseFilter(
+        status_table=status_table,
+        quotes=quotes,
+        min_listing_days=universe_cfg.get("min_listing_days", 120),
+        min_valid_days=universe_cfg.get("min_valid_days", 15),
+        valid_days_window=universe_cfg.get("valid_days_window", 20),
+        min_turnover=universe_cfg.get("min_turnover", 20_000_000.0),
+        turnover_window=universe_cfg.get("turnover_window", 20),
+        lot_size=research_cfg.get("lot_size", 100),
+        available_cash=research_cfg.get("initial_cash", 1000.0),
+    )
+
+    # 构建 WalkForwardConfig
+    wf_cfg = research_cfg.get("walk_forward", {})
+    walk_forward_config = WalkForwardConfig(
+        train_years=wf_cfg.get("train_years", 3),
+        validation_months=wf_cfg.get("validation_months", 6),
+        test_years=wf_cfg.get("test_years", 1),
+        step_years=wf_cfg.get("step_years", 1),
+        min_total_years=wf_cfg.get("min_total_years", 5),
+    )
+
+    # 构建 MonteCarloConfig
+    mc_cfg = research_cfg.get("monte_carlo", {})
+    monte_carlo_config = MonteCarloConfig(
+        random_seed=mc_cfg.get("random_seed", 20260731),
+        n_paths=mc_cfg.get("n_paths", 10_000),
+        path_length=mc_cfg.get("path_length", 244),
+        block_length=mc_cfg.get("block_length", 5),
+        initial_capital=mc_cfg.get("initial_capital", 1000.0),
+        ten_x_target=mc_cfg.get("ten_x_target", 10_000.0),
+        loss_50_threshold=mc_cfg.get("loss_50_threshold", 500.0),
+        near_zero_threshold=mc_cfg.get("near_zero_threshold", 100.0),
+    )
+
+    initial_cash = research_cfg.get("initial_cash", 1000.0)
+
+    # 提取交易日列表
+    trading_dates = sorted(
+        pd.to_datetime(quotes["trade_date"]).dt.date.unique().tolist()
+    )
+
+    # 提取参数候选集合（配置未指定时为 None，使用代码默认值）
+    steady_candidates = research_cfg.get("steady")
+    aggressive_candidates = research_cfg.get("aggressive")
+
+    # 运行研究
+    runner = ResearchRunner(
+        bt_config=bt_config,
+        benchmark=benchmark,
+        universe_filter=universe_filter,
+        walk_forward_config=walk_forward_config,
+        monte_carlo_config=monte_carlo_config,
+        steady_candidates=steady_candidates,
+        aggressive_candidates=aggressive_candidates,
+    )
+    result = runner.run(quotes, trading_dates, initial_cash)
+
+    # 生成报告
+    report_gen = ResearchReportGenerator()
+    output_dir = Path(args.output)
+    data_files = [args.quotes, args.status, args.benchmarks]
+    paths = report_gen.generate_all(
+        result, output_dir, research_cfg, data_files, initial_cash
+    )
+
+    # 输出摘要
+    print(f"研究完成。报告目录: {output_dir}")
+    print(f"  折数: {len(result.folds)}")
+    print(f"  样本不足: {'是' if result.insufficient_sample else '否'}")
+    steady_m = result.steady.oos_metrics
+    if steady_m:
+        print(f"  稳健轨总收益: {steady_m.get('total_return', 0.0):.4f}")
+        print(f"  稳健轨最大回撤: {steady_m.get('max_drawdown', 0.0):.4f}")
+    if result.steady.eligibility:
+        print(f"  稳健轨资格: {result.steady.eligibility.status}")
+    agg_m = result.aggressive.oos_metrics
+    if agg_m:
+        print(f"  激进轨总收益: {agg_m.get('total_return', 0.0):.4f}")
+        print(f"  激进轨最大回撤: {agg_m.get('max_drawdown', 0.0):.4f}")
+    if result.aggressive.monte_carlo:
+        mc = result.aggressive.monte_carlo
+        print(f"  蒙特卡洛十倍概率: {mc.prob_ten_x:.6f}")
+        print(f"  蒙特卡洛亏损50%概率: {mc.prob_loss_50:.6f}")
+        print(f"  蒙特卡洛归零概率: {mc.prob_near_zero:.6f}")
+    print(f"  激进轨资格: {result.aggressive.eligibility.status if result.aggressive.eligibility else 'N/A'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ashare-quant",
@@ -433,6 +572,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_bt.add_argument("--end", help="回测结束日 YYYY-MM-DD")
     p_bt.add_argument("--output", default="reports/phase-2", help="报告输出目录")
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_res = sub.add_parser("research", help="运行策略研究（Phase 3）")
+    p_res.add_argument("--quotes", required=True, help="curated 日行情 Parquet 路径")
+    p_res.add_argument("--status", required=True, help="历史状态表 Parquet 路径")
+    p_res.add_argument("--benchmarks", required=True, help="基准数据 Parquet 路径")
+    p_res.add_argument("--config", help="策略研究配置 YAML 路径")
+    p_res.add_argument("--backtest-config", help="回测配置 YAML 路径")
+    p_res.add_argument("--output", default="reports/phase-3", help="报告输出目录")
+    p_res.set_defaults(func=cmd_research)
 
     return p
 

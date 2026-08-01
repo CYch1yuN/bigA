@@ -29,6 +29,8 @@ data/
 !tests/data/*.parquet
 !tests/data/*.csv
 !reports/phase-2/*.parquet
+!reports/phase-3/*.parquet
+!reports/phase-3/golden-input/*.parquet
 
 # --- 日志与生成产物 ---
 logs/
@@ -37,6 +39,8 @@ reports/phase-1/coverage.json
 # 临时 CLI 双跑目录（验证用，不得忽略正式 reports/phase-2/）
 reports/phase-2-run1/
 reports/phase-2-run2/
+reports/phase-3-run1/
+reports/phase-3-run2/
 
 # --- 系统 ---
 .DS_Store
