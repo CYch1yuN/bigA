@@ -213,31 +213,40 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
+    """安全边界与配置可行性校验（fail-closed）。
+
+    输出使用纯 ASCII 状态标志（``[OK]``/``[WARN]``/``[FAIL]``），确保
+    GBK / UTF-8 等任何 Windows 控制台编码下都不会因符号字符崩溃
+    （历史缺陷：``✓`` 等符号在 GBK 控制台触发 ``UnicodeEncodeError``）。
+
+    任一关键项失败（实盘开关、交易日历）必须以非零退出码结束——缺少
+    交易日历时 ``verify`` 必须失败，而不是只给警告。
+    """
     config = _load_config(args)
     lines: list[str] = []
+    has_failure = False
 
     # 1) 实盘开关必须关闭
     try:
         assert_simulation_only(config)
-        lines.append("✓ 实盘开关已关闭（simulation-only 确认）")
+        lines.append("[OK] 实盘开关已关闭（simulation-only 确认）")
     except Exception as exc:  # noqa: BLE001
-        lines.append(f"✗ 实盘开关校验失败: {exc}")
-        print("\n".join(lines))
-        return 1
+        lines.append(f"[FAIL] 实盘开关校验失败: {exc}")
+        has_failure = True
 
     # 2) 账户与资格结论
     for acc in config.accounts:
         lines.append(
-            f"✓ 账户 {acc.account_id}: 轨道={acc.track.value} "
+            f"[OK] 账户 {acc.account_id}: 轨道={acc.track.value} "
             f"资格={acc.eligibility_status.value}"
         )
 
-    # 3) 交易日历（fail-closed）
+    # 3) 交易日历（fail-closed：加载失败 = verify 失败，非零退出）
     if getattr(args, "synthetic", False):
         env = _build_synthetic_env(config)
         cal = env["calendar"]
         lines.append(
-            f"✓ 交易日历(合成): {cal.first_date} ~ {cal.last_date} 共 {len(cal)} 天"
+            f"[OK] 交易日历(合成): {cal.first_date} ~ {cal.last_date} 共 {len(cal)} 天"
         )
     else:
         try:
@@ -245,29 +254,32 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 config, as_of=date.today(), calendar=None
             )
             lines.append(
-                f"✓ 交易日历: {cal.first_date} ~ {cal.last_date} 共 {len(cal)} 天"
+                f"[OK] 交易日历: {cal.first_date} ~ {cal.last_date} 共 {len(cal)} 天"
             )
         except Exception as exc:  # noqa: BLE001
-            lines.append(f"⚠ 交易日历不可用（fail-closed）: {exc}")
+            lines.append(f"[FAIL] 交易日历不可用（fail-closed）: {exc}")
+            has_failure = True
 
     # 4) 保留策略与调度
     lines.append(
-        f"• 归档: enabled={config.archive.enabled} "
+        f"[INFO] 归档: enabled={config.archive.enabled} "
         f"retain={config.archive.retain_days}天 "
         f"max_batches={config.archive.max_batches}"
     )
     lines.append(
-        f"• 调度: 每日 {config.scheduler.daily_time} / "
+        f"[INFO] 调度: 每日 {config.scheduler.daily_time} / "
         f"每周 {config.scheduler.weekly_day} {config.scheduler.weekly_time}"
     )
-    lines.append(f"• 观察窗口: target={config.observation.target_trading_days} 交易日")
+    lines.append(
+        f"[INFO] 观察窗口: target={config.observation.target_trading_days} 交易日"
+    )
 
     print("\n".join(lines))
     print(
         "\n边界声明: 本系统仅产出研究信号与模拟账户记录，"
         "未连接券商、未涉及真实资金。"
     )
-    return 0
+    return 1 if has_failure else 0
 
 
 def cmd_rerun(args: argparse.Namespace) -> int:
