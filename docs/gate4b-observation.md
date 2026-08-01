@@ -1,15 +1,21 @@
-# Gate 4B 观察报告：连续 60 个交易日模拟运行
+# Gate 4B 观察报告：连续 60 个交易日自动运行
 
-## 结论
+## 状态
+
+- **Gate 4B historical replay（60 日历史回放预检）：PASS**
+- **Gate 4B continuous operation（连续 60 个交易日自动运行）：NOT STARTED（0/60）**
+
+## 预检（历史回放）结果
 
 - 观察窗口：2020-07-16 ~ 2020-10-07（60 个连续交易日）
 - 每日终态：60/60 全部 `SUCCESS` / exit 0，**无静默错误**
 - 订单：共 1 条，成交 1 笔，信号 2 条，**重复订单 0**
 - 账务恒等式违规 0 次；负现金 0 次；**无无法解释的权益变化**
-- 观察窗口：两轨账户均 60/60 与 60/60 交易日
 - 数据源：确定性合成行情（synthetic，离线），不联网、不手写结果
 
-## 每日明细
+> **重要边界**：以上为**历史回放预检**（单进程内完成，约 20-40 秒），**不能**替代原验收条件要求的「连续 60 个交易日自动运行」。正式观察须从真实自动任务启动日起，按实际交易日经 CLI / Windows 任务计划、跨日进程重启、真实数据更新、失败告警与恢复流程累计 60 天。
+
+## 每日明细（预检回放）
 
 | 交易日 | 终态 | 退出码 | 信号 | 订单 | 成交 | 账务恒等 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -74,13 +80,24 @@
 | 2020-10-06 | SUCCESS | 0 | 0 | 0 | 0 | ✓ |
 | 2020-10-07 | SUCCESS | 0 | 1 | 0 | 0 | ✓ |
 
+## 连续运行启动指引（continuous operation）
+
+1. 确认真实数据源就绪（`config/automation.default.yaml` 的 `data.symbols` 与本地 curated 数据），
+   并验证 `ashare-quant automation verify` 通过。
+2. 安装 Windows 任务计划：`ashare-quant automation install --yes`（或运行 `scripts/install_scheduler.ps1`），
+   每日 `18:30` 自动执行 `ashare-quant automation daily`。
+3. 自启动日起，每个真实交易日由任务计划运行一次每日管线（独立进程、跨日重启、真实数据更新、
+   失败告警与中断恢复）。
+4. 进度由 `scripts/gate4b_observation.py --mode track` 按实际交易日实时累计；
+   连续 60 个交易日（X/60）且每日 SUCCESS、无重复订单、账务恒等式无违规时，方标记 continuous operation 达标。
+
 ## 资格结论
 
 - 稳健轨 `paper-steady`：`NOT_ELIGIBLE_FOR_LIVE_TRADING`
 - 激进轨 `paper-aggressive`：`SIMULATION_ONLY`
 - **两轨均不具备实盘资格**；观察窗口完成不等同于获得实盘授权，复审结论不由本系统作出。
 
-> **边界声明**：本报告由本机自动化研究系统生成，内容为合成数据模拟记录；
+> **边界声明**：本报告由本机自动化研究系统生成，内容为模拟/研究记录；
 > 未连接券商、未涉及真实资金，不构成投资建议。
 
-**Gate 4B 观察完成，等待 Gate 4B 复审。**
+**等待 Gate 4B 复审（continuous operation 尚未开始）。**

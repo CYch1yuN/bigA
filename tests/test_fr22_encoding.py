@@ -63,6 +63,8 @@ from ashare_quant.automation.daily import DailyPipeline, run_daily  # noqa: E402
 GARBLE_FRAGMENTS = [
     "±¾", "»ú", "×Ô", "¶¯", "é", "æ¶", "ç’", "鈹", "Ã", "Æ",
     "锛", "鈥", "婵€",
+    # 扩展：UTF-8 被误读为 Latin-1/ANSI 的高频形态（覆盖新编码形态）
+    "â€", "ï¿½", "Â", "æ¯", "éå", "æ¨", "ç¨", "æµ", "å¼", "è½",
 ]
 
 # 必须出现的 Phase 4 可读中文术语。
@@ -103,9 +105,10 @@ def _collect_target_files() -> list[Path]:
     files.extend(sorted((ROOT / "scripts").glob("*.ps1")))
     # src/ashare_quant/automation/*.py
     files.extend(sorted((ROOT / "src" / "ashare_quant" / "automation").glob("*.py")))
-    # tests
-    files.append(ROOT / "tests" / "test_phase4_automation.py")
-    files.extend(sorted((ROOT / "tests").glob("test_fr*.py")))
+    # tests：全部测试文件（含 test_gate4b*.py / test_phase4 / test_fr*）
+    files.extend(sorted((ROOT / "tests").glob("*.py")))
+    # scripts：除 .ps1 外的辅助脚本（报告生成器等）
+    files.extend(sorted((ROOT / "scripts").glob("*.py")))
     # reports/phase-4/**/*
     files.extend(sorted((ROOT / "reports" / "phase-4").rglob("*")))
     # 过滤：仅保留真实存在的普通文件，跳过目录、字节码缓存与二进制产物
@@ -150,6 +153,8 @@ def test_official_files_clean_utf8_and_required_terms():
 
         # 2) 无乱码（故意 fixture 文件与本测试文件自身除外）
         if rel not in (INTENTIONAL_FIXTURE, SELF_FILE):
+            if "\ufffd" in text:
+                garble_hits.append(f"{rel}: 出现 U+FFFD 替换字符（编码损坏）")
             for frag in GARBLE_FRAGMENTS:
                 if frag in text:
                     garble_hits.append(f"{rel}: 命中乱码片段 {frag!r}")
@@ -180,6 +185,26 @@ def test_gate4a_verification_report_clean_and_has_terms():
         assert term in text, f"复验报告缺少措辞: {term}"
     for frag in GARBLE_FRAGMENTS:
         assert frag not in text, f"复验报告出现乱码片段 {frag!r}"
+
+
+def test_gate4b_observation_files_clean_utf8():
+    """Gate 4B 观察报告 / 摘要 / 测试必须是干净 UTF-8（Gate 4B 复审阻断项）。"""
+    files = [
+        ROOT / "docs" / "gate4b-observation.md",
+        ROOT / "reports" / "phase-4" / "gate4b" / "60d-summary.json",
+        ROOT / "tests" / "test_gate4b_60day_simulation.py",
+        ROOT / "scripts" / "gate4b_observation.py",
+    ]
+    for f in files:
+        assert f.exists(), f"缺少 Gate 4B 文件: {f.relative_to(ROOT)}"
+        text = f.read_text(encoding="utf-8")
+        assert "\ufffd" not in text, f"{f.relative_to(ROOT)} 含 U+FFFD 替换字符"
+        for frag in GARBLE_FRAGMENTS:
+            assert frag not in text, (
+                f"{f.relative_to(ROOT)} 出现乱码片段 {frag!r}"
+            )
+    # JSON 必须可解析
+    json.loads((ROOT / "reports" / "phase-4" / "gate4b" / "60d-summary.json").read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------- #

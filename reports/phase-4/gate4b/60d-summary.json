@@ -1,13 +1,8 @@
 {
-  "gate": "Gate 4B",
-  "generated_at": "2026-08-02T12:00:00",
-  "synthetic": true,
-  "online": false,
-  "window": {
-    "first_day": "2020-07-16",
-    "last_day": "2020-10-07",
-    "trading_days": 60
-  },
+  "mode": "precheck",
+  "first_day": "2020-07-16",
+  "last_day": "2020-10-07",
+  "trading_days": 60,
   "daily": [
     {
       "date": "2020-07-16",
@@ -16,8 +11,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-17",
@@ -26,8 +20,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-20",
@@ -36,8 +29,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-21",
@@ -46,8 +38,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-22",
@@ -56,8 +47,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-23",
@@ -66,8 +56,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-24",
@@ -76,8 +65,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-27",
@@ -86,8 +74,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-28",
@@ -96,8 +83,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-29",
@@ -106,8 +92,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-30",
@@ -116,8 +101,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-07-31",
@@ -126,8 +110,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-03",
@@ -136,8 +119,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-04",
@@ -146,8 +128,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-05",
@@ -156,8 +137,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-06",
@@ -166,8 +146,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-07",
@@ -176,8 +155,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-10",
@@ -186,8 +164,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-11",
@@ -196,8 +173,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-12",
@@ -206,8 +182,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-13",
@@ -216,8 +191,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-14",
@@ -226,8 +200,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-17",
@@ -236,8 +209,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-18",
@@ -246,8 +218,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-19",
@@ -256,8 +227,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-20",
@@ -266,8 +236,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-21",
@@ -276,8 +245,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-24",
@@ -286,8 +254,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-25",
@@ -296,8 +263,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-26",
@@ -306,8 +272,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-27",
@@ -316,8 +281,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-28",
@@ -326,8 +290,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-08-31",
@@ -336,8 +299,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-01",
@@ -346,8 +308,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-02",
@@ -356,8 +317,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-03",
@@ -366,8 +326,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-04",
@@ -376,8 +335,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-07",
@@ -386,8 +344,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-08",
@@ -396,8 +353,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-09",
@@ -406,8 +362,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-10",
@@ -416,8 +371,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-11",
@@ -426,8 +380,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-14",
@@ -436,8 +389,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-15",
@@ -446,8 +398,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-16",
@@ -456,8 +407,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-17",
@@ -466,8 +416,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-18",
@@ -476,8 +425,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-21",
@@ -486,8 +434,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-22",
@@ -496,8 +443,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-23",
@@ -506,8 +452,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-24",
@@ -516,8 +461,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-25",
@@ -526,8 +470,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-28",
@@ -536,8 +479,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-29",
@@ -546,8 +488,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-09-30",
@@ -556,8 +497,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-10-01",
@@ -566,8 +506,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-10-02",
@@ -576,8 +515,7 @@
       "signals": 1,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-10-05",
@@ -586,8 +524,7 @@
       "signals": 0,
       "orders": 1,
       "filled": 1,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-10-06",
@@ -596,8 +533,7 @@
       "signals": 0,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     },
     {
       "date": "2020-10-07",
@@ -606,8 +542,7 @@
       "signals": 1,
       "orders": 0,
       "filled": 0,
-      "identity_ok": true,
-      "cash_ok": true
+      "identity_ok": true
     }
   ],
   "totals": {
@@ -1115,10 +1050,8 @@
       }
     ]
   },
-  "eligibility": {
-    "paper-steady": "NOT_ELIGIBLE_FOR_LIVE_TRADING",
-    "paper-aggressive": "SIMULATION_ONLY",
-    "note": "两轨均不具备实盘资格；观察窗口完成不等同于实盘授权"
-  },
-  "disclaimer": "本报告由本机自动化研究系统生成，全部为合成数据模拟记录，未连接券商、未涉及真实资金。"
+  "generated_at": "2026-08-02T02:49:28",
+  "synthetic": true,
+  "online": false,
+  "disclaimer": "本报告由 scripts/gate4b_observation.py 生成（代码可复现），内容为模拟/研究记录，未连接券商、未涉及真实资金。"
 }
