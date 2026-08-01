@@ -62,14 +62,19 @@ def _track_summary_with_state(state_dir: Path, reports_dir: Path) -> dict:
     return summary
 
 
-def test_track_default_output_goes_to_state_dir(tmp_path: Path) -> None:
-    """track 默认输出到 state/automation/gate4b/（Git 忽略目录）。"""
+def test_track_default_output_goes_to_state_dir(tmp_path: Path, monkeypatch) -> None:
+    """track 默认输出到 state/automation/gate4b/（Git 忽略目录）。
+
+    TRACK_OUTPUT_DIR 用 monkeypatch 指到 tmp，避免向仓库真实 state/ 写入。
+    """
+    fake_track_dir = tmp_path / "track-out"
+    monkeypatch.setattr(g4b, "TRACK_OUTPUT_DIR", fake_track_dir)
     state_dir = tmp_path / "state"
     reports_dir = tmp_path / "reports"
     summary = _track_summary_with_state(state_dir, reports_dir)
     summary_path, md_path = g4b._write_outputs(summary)
-    # 默认输出目录 = ROOT/state/automation/gate4b
-    expected_dir = g4b.TRACK_OUTPUT_DIR
+    # 默认输出目录 = TRACK_OUTPUT_DIR（Git 忽略）
+    expected_dir = fake_track_dir
     assert summary_path.parent == expected_dir
     assert md_path.parent == expected_dir
     assert summary_path.name == "gate4b-track-summary.json"
@@ -80,8 +85,10 @@ def test_track_default_output_goes_to_state_dir(tmp_path: Path) -> None:
     assert md_path != g4b.OBSERVATION_MD
 
 
-def test_track_does_not_touch_tracked_examples(tmp_path: Path) -> None:
+def test_track_does_not_touch_tracked_examples(tmp_path: Path, monkeypatch) -> None:
     """track 输出不得修改受 Git 跟踪的正式示例文件。"""
+    fake_track_dir = tmp_path / "track-out2"
+    monkeypatch.setattr(g4b, "TRACK_OUTPUT_DIR", fake_track_dir)
     # 记录示例文件当前字节
     example_md = g4b.OBSERVATION_MD
     example_json = g4b.SUMMARY_JSON
@@ -97,8 +104,8 @@ def test_track_does_not_touch_tracked_examples(tmp_path: Path) -> None:
     json_after = example_json.read_bytes() if example_json.exists() else None
     assert md_before == md_after
     assert json_before == json_after
-    # 且 track 摘要确实写进了状态目录
-    assert g4b.TRACK_OUTPUT_DIR.joinpath("gate4b-track-summary.json").exists()
+    # 且 track 摘要确实写进了状态目录（monkeypatched）
+    assert fake_track_dir.joinpath("gate4b-track-summary.json").exists()
 
 
 def test_output_dir_override(tmp_path: Path) -> None:
@@ -190,14 +197,8 @@ def test_atomic_write_leaves_no_partial(tmp_path: Path) -> None:
     assert leftovers == []
 
 
-def test_track_cli_writes_state_dir_not_tracked(tmp_path: Path) -> None:
-    """端到端：--mode track CLI 输出落在状态目录，受跟踪示例不变。"""
+def _run_cli(argv: list[str], cwd: Path) -> "subprocess.CompletedProcess[str]":
     import subprocess
-
-    example_md = g4b.OBSERVATION_MD
-    example_json = g4b.SUMMARY_JSON
-    md_before = example_md.read_bytes() if example_md.exists() else None
-    json_before = example_json.read_bytes() if example_json.exists() else None
 
     env = dict(os.environ)
     # 解除沙箱 bulk-delete 守卫注入，避免测试收尾清理误拦截
@@ -208,21 +209,84 @@ def test_track_cli_writes_state_dir_not_tracked(tmp_path: Path) -> None:
         "CODEBUDDY_NODE_BIN",
     ):
         env.pop(k, None)
-    proc = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "gate4b_observation.py"), "--mode", "track"],
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "gate4b_observation.py"), *argv],
         capture_output=True,
         text=True,
-        cwd=str(ROOT),
+        cwd=str(cwd),
         env=env,
         timeout=120,
     )
+
+
+def test_track_cli_writes_output_dir_not_tracked(tmp_path: Path) -> None:
+    """端到端：--mode track --output-dir <全新目录> → 输出落在该目录，受跟踪示例不变。
+
+    修复要点（PR #8 复审 FAIL）：
+    - 必须显式传 --output-dir 指向 tmp_path 下的全新目录；
+    - 执行前断言输出文件**不存在**（避免假通过）；
+    - 执行后断言 returncode==0、stdout 含 `[gate4b:track] wrote`、
+      JSON mode==track、两个文件本次新生成、无 .tmp 残留。
+    """
+    example_md = g4b.OBSERVATION_MD
+    example_json = g4b.SUMMARY_JSON
+    md_before = example_md.read_bytes() if example_md.exists() else None
+    json_before = example_json.read_bytes() if example_json.exists() else None
+
+    out = tmp_path / "fresh-out"  # 全新目录
+    out_json = out / "gate4b-track-summary.json"
+    out_md = out / "gate4b-track-observation.md"
+    # 执行前：输出文件必须不存在
+    assert not out_json.exists()
+    assert not out_md.exists()
+
+    proc = _run_cli(["--mode", "track", "--output-dir", str(out)], cwd=tmp_path)
     assert proc.returncode == 0, proc.stderr
+    assert "[gate4b:track] wrote" in proc.stdout
+    assert out_json.exists() and out_md.exists()
+    # 本次新生成
+    payload = json.loads(out_json.read_text(encoding="utf-8"))
+    assert payload["mode"] == "track"
+    md = out_md.read_text(encoding="utf-8")
+    assert "continuous operation" in md
+
+    # 受跟踪示例不变
     md_after = example_md.read_bytes() if example_md.exists() else None
     json_after = example_json.read_bytes() if example_json.exists() else None
     assert md_before == md_after
     assert json_before == json_after
-    # 状态目录下生成了 track 摘要
-    assert g4b.TRACK_OUTPUT_DIR.joinpath("gate4b-track-summary.json").exists()
-    # 无 .tmp 残留
-    leftovers = list(g4b.TRACK_OUTPUT_DIR.glob("*.tmp"))
-    assert leftovers == []
+
+    # 不得向仓库真实 state/ 写入（除已有隔离目录外无新增文件）
+    assert not list(out.glob("*.tmp"))
+
+
+def test_track_cli_does_not_write_real_state(tmp_path: Path) -> None:
+    """端到端：--output-dir 显式指定时，仓库真实 state/ 不得新增任何文件。"""
+    real_state = ROOT / "state"
+    before = {
+        p.resolve().as_posix(): p
+        for p in real_state.rglob("*")
+        if p.is_file()
+    } if real_state.exists() else {}
+
+    out = tmp_path / "out2"
+    proc = _run_cli(["--mode", "track", "--output-dir", str(out)], cwd=tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+    after = {
+        p.resolve().as_posix(): p
+        for p in real_state.rglob("*")
+        if p.is_file()
+    } if real_state.exists() else {}
+    assert set(before.keys()) == set(after.keys()), (
+        "track CLI 不得向仓库真实 state/ 写文件"
+    )
+
+
+def test_cli_help_lists_all_options(tmp_path: Path) -> None:
+    """端到端：--help 必须输出 --mode / --config / --output-dir。"""
+    proc = _run_cli(["--help"], cwd=tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert "--mode" in proc.stdout
+    assert "--config" in proc.stdout
+    assert "--output-dir" in proc.stdout

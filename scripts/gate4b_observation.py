@@ -617,3 +617,7 @@ def _render_md(summary: dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
