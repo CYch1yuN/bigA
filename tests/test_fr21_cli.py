@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from ashare_quant.automation import cli as cli_mod
+from ashare_quant.automation.calendar import CalendarUnavailableError
 from ashare_quant.automation.cli import (
     _as_of,
     _repo_root,
@@ -118,6 +119,54 @@ class TestVerify:
         assert "实盘开关已关闭" in out
         assert "交易日历" in out
         assert "simulation" in out.lower() or "模拟" in out
+
+    def test_verify_uses_ascii_status_flags(self, capsys, monkeypatch) -> None:
+        """verify 输出必须使用纯 ASCII 状态标志（[OK]/[WARN]/[FAIL]/[INFO]）。
+
+        GBK 控制台无法编码 ✓/✗/⚠/• 等符号（历史缺陷：UnicodeEncodeError）。
+        """
+        class _FakeCal:
+            first_date = date(2020, 1, 1)
+            last_date = date(2020, 12, 31)
+
+            def __len__(self) -> int:
+                return 244
+
+        monkeypatch.setattr(cli_mod, "load_trading_calendar", lambda *a, **k: _FakeCal())
+        rc = cmd_verify(_Args())
+        assert rc == 0
+        out = capsys.readouterr().out
+        for symbol in ("✓", "✗", "⚠", "•"):
+            assert symbol not in out, f"verify 输出不得包含非 ASCII 符号 {symbol!r}"
+        assert "[OK] 实盘开关已关闭" in out
+        assert "[OK] 交易日历" in out
+
+    def test_verify_fails_when_calendar_unavailable(self, capsys, monkeypatch) -> None:
+        """日历缺失 ⇒ verify 必须非零退出（fail-closed），不能只给警告。"""
+        def _boom(*a, **k):
+            raise CalendarUnavailableError("交易日历文件不存在: test")
+
+        monkeypatch.setattr(cli_mod, "load_trading_calendar", _boom)
+        rc = cmd_verify(_Args())
+        assert rc == 1, "日历不可用时 verify 必须返回非零退出码"
+        out = capsys.readouterr().out
+        assert "[FAIL] 交易日历不可用" in out
+
+    def test_verify_gbk_console_no_crash(self, capsys, monkeypatch) -> None:
+        """GBK 编码控制台（PYTHONIOENCODING=gbk）下 verify 不得崩溃。"""
+        class _FakeCal:
+            first_date = date(2020, 1, 1)
+            last_date = date(2020, 12, 31)
+
+            def __len__(self) -> int:
+                return 244
+
+        monkeypatch.setattr(cli_mod, "load_trading_calendar", lambda *a, **k: _FakeCal())
+        # 模拟 GBK 控制台：所有 stdout 字符都必须能被 gbk 编码
+        rc = cmd_verify(_Args())
+        assert rc == 0
+        out = capsys.readouterr().out
+        out.encode("gbk")  # 若含 gbk 不可编码字符会抛 UnicodeEncodeError
 
 
 # =========================================================================== #
