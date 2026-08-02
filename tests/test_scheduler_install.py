@@ -194,8 +194,12 @@ def test_success_registers_and_verifies_both(tmp_path: Path) -> None:
         assert len(queries) >= 1, f"{name} 应至少验证存在一次: {queries}"
 
 
-def test_whatif_does_not_touch_schtasks(tmp_path: Path) -> None:
-    """-WhatIf 只打印不执行：日志为空。"""
+def test_whatif_shows_both_commands_and_touches_nothing(tmp_path: Path) -> None:
+    """-WhatIf 必须显示 Daily/Weekly 完整命令（审计参数），且零真实 schtasks 调用。
+
+    复审回归点：COMMAND 打印必须发生在 ShouldProcess 之前，使 WhatIf 也能
+    看到完整命令（此前打印在 Invoke-Schtasks 内，WhatIf 不调用它 → 无预览）。
+    """
     log = tmp_path / "schtasks.log"
     env = dict(os.environ)
     env["FAKE_SCHTASKS_LOG"] = str(log)
@@ -214,4 +218,17 @@ def test_whatif_does_not_touch_schtasks(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "(WhatIf)" in proc.stdout
+
+    # 两条完整命令必须出现在 stdout
+    cmd_lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("COMMAND:")]
+    assert len(cmd_lines) == 2, f"WhatIf 应显示两条 COMMAND: {cmd_lines}"
+    daily_cmd = next(ln for ln in cmd_lines if "AShareQuantAutomation-Daily" in ln)
+    weekly_cmd = next(ln for ln in cmd_lines if "AShareQuantAutomation-Weekly" in ln)
+    # Daily 预览不得含 /D；Weekly 必须含 /D SAT
+    assert "/SC DAILY" in daily_cmd
+    assert "/D" not in daily_cmd, f"Daily 预览不得含 /D: {daily_cmd}"
+    assert "/SC WEEKLY" in weekly_cmd
+    assert "/D SAT" in weekly_cmd, f"Weekly 预览必须含 /D SAT: {weekly_cmd}"
+
+    # WhatIf 零真实调用：假 schtasks 日志必须为空
     assert not log.exists() or log.read_text(encoding="utf-8").strip() == ""

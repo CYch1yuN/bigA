@@ -99,11 +99,12 @@ function Invoke-Schtasks {
         [Parameter(Mandatory = $true)]
         [string[]]$ArgList
     )
-    $cmdline = "schtasks " + ($ArgList -join " ")
-    Write-Host "COMMAND: $cmdline"
+    # 注意：COMMAND 预览由调用方（Register-Task）在构造参数数组后、ShouldProcess
+    # 之前打印，保证 -WhatIf 模式下也能看到完整命令。此处只执行并检查退出码。
     & $SchtasksExe @ArgList
     $code = $LASTEXITCODE
     if ($code -ne 0) {
+        $cmdline = "schtasks " + ($ArgList -join " ")
         throw "schtasks 执行失败（exit $code）: $cmdline"
     }
     return $code
@@ -141,6 +142,10 @@ function Register-Task {
         "/TR", $action,
         "/F"
     )
+
+    # 参数数组构造完成后、ShouldProcess 之前打印命令——
+    # 使 -WhatIf 模式（不执行任何 schtasks）也能审计完整参数。
+    Write-Host "COMMAND: schtasks $($createArgs -join ' ')"
 
     if ($Force -and $PSCmdlet.ShouldProcess($Name, "删除旧任务（Force）")) {
         if (Task-Exists $Name) {
