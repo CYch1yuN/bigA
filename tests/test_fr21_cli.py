@@ -7,6 +7,7 @@ cmd_verify 安全边界、cmd_install/uninstall --dry-run）。不触达 cmd_dai
 from __future__ import annotations
 
 import argparse
+import types
 from datetime import date
 from pathlib import Path
 
@@ -151,6 +152,64 @@ class TestVerify:
         assert rc == 1, "日历不可用时 verify 必须返回非零退出码"
         out = capsys.readouterr().out
         assert "[FAIL] 交易日历不可用" in out
+
+    def test_verify_reports_missing_data_sources(self, capsys, monkeypatch) -> None:
+        """数据源 SDK 缺失 ⇒ verify 明确 WARN（不 fail，但提示安装 workbench）。
+
+        不依赖真实环境：mock ``__import__`` 对 akshare/baostock 抛 ImportError。
+        """
+        class _FakeCal:
+            first_date = date(2020, 1, 1)
+            last_date = date(2020, 12, 31)
+
+            def __len__(self) -> int:
+                return 244
+
+        monkeypatch.setattr(cli_mod, "load_trading_calendar", lambda *a, **k: _FakeCal())
+
+        real_import = __import__
+
+        def _fake_import(name, *a, **k):
+            if name.split(".")[0] in ("akshare", "baostock"):
+                raise ImportError(f"No module named {name}")
+            return real_import(name, *a, **k)
+
+        monkeypatch.setattr("builtins.__import__", _fake_import)
+        rc = cmd_verify(_Args())
+        assert rc == 0  # 数据源缺失不阻断（WARN），核心仍可用
+        out = capsys.readouterr().out
+        assert "[WARN] 数据源 akshare 不可用" in out
+        assert "[WARN] 数据源 baostock 不可用" in out
+        assert "workbench" in out
+
+    def test_verify_reports_available_data_sources(self, capsys, monkeypatch) -> None:
+        """数据源 SDK 可导入 ⇒ verify 标记 OK。
+
+        不依赖真实安装：mock ``__import__`` 对 akshare/baostock 返回伪模块，
+        保证在仅安装 ``.[dev]``（未装 sources）的干净环境也能通过。
+        """
+        class _FakeCal:
+            first_date = date(2020, 1, 1)
+            last_date = date(2020, 12, 31)
+
+            def __len__(self) -> int:
+                return 244
+
+        monkeypatch.setattr(cli_mod, "load_trading_calendar", lambda *a, **k: _FakeCal())
+
+        real_import = __import__
+
+        def _fake_import(name, *a, **k):
+            if name.split(".")[0] in ("akshare", "baostock"):
+                return types.ModuleType(name)
+            return real_import(name, *a, **k)
+
+        monkeypatch.setattr("builtins.__import__", _fake_import)
+        rc = cmd_verify(_Args())
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[OK] 数据源 akshare 可导入" in out
+        assert "[OK] 数据源 baostock 可导入" in out
 
     def test_verify_gbk_console_no_crash(self, capsys, monkeypatch) -> None:
         """GBK 编码控制台（PYTHONIOENCODING=gbk）下 verify 不得崩溃。"""

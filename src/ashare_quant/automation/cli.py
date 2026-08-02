@@ -34,6 +34,27 @@ from .state import StateStore
 from ..backtest.config import BacktestConfig
 
 
+def _build_auto_data_source(config: AutomationConfig):
+    """构造真实行情数据源（生产路径）。
+
+    使用 :func:`build_updating_data_source`：``provider_factory`` 留空时，
+    :class:`FetchManager` 自行构造 AKShare（主）+ BaoStock（备）真实提供器，
+    并完成 抓取 -> 标准化 -> 落盘 curated -> manifest/SHA256 全链路。
+
+    数据源不可用 / 抓取失败时由管线按既定语义降级为
+    ``SKIPPED_DATA_UNAVAILABLE``（可接受跳过），绝不伪造在线成功。
+    """
+    from .data_update import build_updating_data_source
+    from ..config import default_config_path, load_config
+
+    app_cfg = load_config(default_config_path())
+    return build_updating_data_source(
+        app_cfg,
+        data_dir=config.data_dir,
+        benchmark_symbols=list(config.data.benchmark_symbols),
+    )
+
+
 # ---------------------------------------------------------------------- #
 # 配置与路径
 # ---------------------------------------------------------------------- #
@@ -135,8 +156,14 @@ def cmd_daily(args: argparse.Namespace) -> int:
     else:
         if as_of is None:
             as_of = date.today()
+        # 真实数据源：抓取 + 落盘 + 清单，产出真实行情/信号/模拟账户产物
+        data_source = _build_auto_data_source(config)
         out = run_daily(
-            config, as_of_date=as_of, state_store=store, dry_run=dry_run
+            config,
+            as_of_date=as_of,
+            data_source=data_source,
+            state_store=store,
+            dry_run=dry_run,
         )
 
     print(f"daily {as_of.isoformat()}: {out.state.value} (exit={out.exit_code})")
@@ -177,6 +204,7 @@ def cmd_weekly(args: argparse.Namespace) -> int:
     else:
         if as_of is None:
             as_of = date.today()
+        # 每周任务不需要行情数据源：只读取每日运行产物（项目设计）
         out = run_weekly(
             config, as_of_date=as_of, state_store=store, dry_run=dry_run
         )
@@ -210,6 +238,25 @@ def cmd_status(args: argparse.Namespace) -> int:
     )
     print(markdown)
     return 0
+
+
+def _check_data_sources(lines: list[str]) -> None:
+    """检查 AKShare / BaoStock 是否可导入（工作台真实抓取前置条件）。
+
+    缺失或导入阶段异常标记为 [WARN]（不 fail）：离线测试与核心不依赖
+    数据源 SDK，但工作台 daily 将无法产生真实行情产物——界面会如实显示
+    skipped。``verify`` 绝不因数据源检查崩溃。
+    安装命令：``pip install -e ".[workbench]"``。
+    """
+    for mod_name in ("akshare", "baostock"):
+        try:
+            __import__(mod_name)
+            lines.append(f"[OK] 数据源 {mod_name} 可导入（工作台可真实抓取）")
+        except Exception as exc:  # noqa: BLE001 - 导入阶段任何异常都降级为 WARN
+            lines.append(
+                f"[WARN] 数据源 {mod_name} 不可用（{type(exc).__name__}）："
+                "工作台 daily 无法产生真实行情产物。安装: pip install -e \".[workbench]\""
+            )
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -260,7 +307,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
             lines.append(f"[FAIL] 交易日历不可用（fail-closed）: {exc}")
             has_failure = True
 
-    # 4) 保留策略与调度
+    # 4) 数据源 SDK 可导入性（工作台真实抓取的前置条件）
+    _check_data_sources(lines)
+
+    # 5) 保留策略与调度
     lines.append(
         f"[INFO] 归档: enabled={config.archive.enabled} "
         f"retain={config.archive.retain_days}天 "
@@ -313,8 +363,14 @@ def cmd_rerun(args: argparse.Namespace) -> int:
         else:
             if as_of is None:
                 as_of = date.today()
+            # 重跑同样需要真实数据源（重新抓取数据）
+            data_source = _build_auto_data_source(config)
             out = run_daily(
-                config, as_of_date=as_of, state_store=store, force_retry=True
+                config,
+                as_of_date=as_of,
+                data_source=data_source,
+                state_store=store,
+                force_retry=True,
             )
     else:  # weekly
         if getattr(args, "synthetic", False):

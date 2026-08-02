@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+*.local
+# TypeScript 增量编译缓存（不进入提交）
+*.tsbuildinfo

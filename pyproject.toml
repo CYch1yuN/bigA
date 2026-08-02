@@ -28,6 +28,25 @@ dev = [
     "pytest>=7.4,<9.0",
     "pytest-cov>=4.1,<6.0",
 ]
+# 大A量化研究控制台（UI-G1 Security）：仅随 Dashboard 子系统中使用，不影响量化核心离线测试。
+dashboard = [
+    "fastapi>=0.111,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "argon2-cffi>=23.1,<25.0",
+    "httpx>=0.27,<1.0",
+]
+# 可操作工作台（UI-G2）：一次安装即同时具备 Dashboard 后端与真实数据源抓取能力。
+# 这是工作台的唯一推荐安装入口（等价于 dashboard + sources + dev）。
+workbench = [
+    "fastapi>=0.111,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "argon2-cffi>=23.1,<25.0",
+    "httpx>=0.27,<1.0",
+    "akshare>=1.12,<2.0",
+    "baostock>=0.8.8,<1.0",
+    "pytest>=7.4,<9.0",
+    "pytest-cov>=4.1,<6.0",
+]
 
 [project.scripts]
 ashare-quant = "ashare_quant.cli:main"
