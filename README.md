@@ -74,46 +74,45 @@ cd ../..
 ```
 
 > `npm ci` 按 `package-lock.json` 精确安装依赖；`npm run build` 产出 `dashboard/frontend/dist`。
-> 若跳过此步直接启动后端，首页将提示"前端未构建"。
+> 若跳过此步直接启动后端，启动脚本将明确提示"前端未构建"。
 
-### 1. 生成登录凭据（一次性；密码哈希写入 state/dashboard/auth.json，Git 忽略）
+### 1. 准备凭据（仓库根 `.env`，Git 忽略）
 
-**PowerShell（Windows）：**
+在仓库根创建 `.env`，写入三项（**明文密码请存入密码管理器，不要写入 `.env`**）：
 
-```powershell
-# 在仓库根目录执行
-$env:ASHARE_DASHBOARD_USERNAME = "admin"
-$env:ASHARE_DASHBOARD_PASSWORD_HASH = & .\.venv\Scripts\python.exe -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('你的密码'))"
-$env:ASHARE_DASHBOARD_SESSION_SECRET = "至少32字符的随机字符串"
+```
+ASHARE_DASHBOARD_USERNAME=admin
+ASHARE_DASHBOARD_PASSWORD_HASH=<argon2 哈希>
+ASHARE_DASHBOARD_SESSION_SECRET=<至少 32 字符随机串>
 ```
 
-**Linux / macOS：**
+哈希生成示例（用你的密码替换 `你的密码`）：
 
-```bash
-# 在仓库根目录执行
-export ASHARE_DASHBOARD_USERNAME="admin"
-export ASHARE_DASHBOARD_PASSWORD_HASH=$(.venv/bin/python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('你的密码'))")
-export ASHARE_DASHBOARD_SESSION_SECRET="至少32字符的随机字符串"
+```powershell
+.\.venv\Scripts\python.exe -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('你的密码'))"
 ```
 
 ### 2. 启动服务（默认 http://127.0.0.1:8765）
 
-推荐**始终在仓库根目录**启动，显式指定应用目录，避免相对路径错误：
-
-**PowerShell（Windows）：**
+**Windows（PowerShell，推荐）：**
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --app-dir dashboard/backend --host 127.0.0.1 --port 8765
+.\start_dashboard.ps1            # 检查 .env / venv / 前端 dist 后启动
+.\start_dashboard.ps1 -CheckOnly # 仅预检，不启动
 ```
 
 **Linux / macOS：**
 
 ```bash
+# .env 中哈希含 $ 字符，请逐项手动 export（哈希/secret 用单引号包裹）
+export ASHARE_DASHBOARD_USERNAME="admin"
+export ASHARE_DASHBOARD_PASSWORD_HASH='<从 .env 复制>'
+export ASHARE_DASHBOARD_SESSION_SECRET='<从 .env 复制>'
 .venv/bin/python -m uvicorn app.main:create_app --factory --app-dir dashboard/backend --host 127.0.0.1 --port 8765
 ```
 
-> 备选（若已在 `dashboard/backend` 目录内）：Windows 用 `../../.venv/Scripts/python.exe`，
-> Linux/macOS 用 `../../.venv/bin/python` 执行同样的 uvicorn 命令。
+> 首次启动会把密码哈希持久化到 `state/dashboard/auth.json`（Git 忽略），此后其优先级高于 `.env`；
+> 后续轮换密码请在登录后通过界面「修改密码」完成（自动更新 auth.json 并使旧会话失效）。
 
 启动后打开 http://127.0.0.1:8765 登录，首页「操作中心」可执行环境检查、
 每日/每周任务、日期区间补跑与失败重跑——均通过本地自动化 CLI 真实执行，

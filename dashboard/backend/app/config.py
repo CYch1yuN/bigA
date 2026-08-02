@@ -113,13 +113,19 @@ def load_config(environ: dict[str, str] | None = None) -> DashboardConfig:
         key_file=Path(env["ASHARE_DASHBOARD_KEY_FILE"]) if env.get("ASHARE_DASHBOARD_KEY_FILE") else None,
         login_max_failures=_env_int("ASHARE_DASHBOARD_LOGIN_MAX_FAILURES", DEFAULT_LOGIN_MAX_FAILURES),
         login_lock_seconds=_env_int("ASHARE_DASHBOARD_LOGIN_LOCK_SECONDS", DEFAULT_LOGIN_LOCK_SECONDS),
+        # 密码哈希持久化：首次启动写入 state/dashboard/auth.json，此后优先于环境变量
+        auth_file=default_auth_file(),
     )
     return cfg.validate()
 
 
 def default_auth_file() -> Path:
-    """默认密码存储位置：仓库 state/dashboard/auth.json（Git 忽略）。"""
-    return Path(__file__).resolve().parents[4] / "state" / "dashboard" / "auth.json"
+    """默认密码存储位置：仓库 state/dashboard/auth.json（Git 忽略）。
+
+    注意：config.py 位于 dashboard/backend/app/ 下，
+    parents[3] = 仓库根（与 default_project_root 一致）。
+    """
+    return Path(__file__).resolve().parents[3] / "state" / "dashboard" / "auth.json"
 
 
 def default_project_root() -> Path:
