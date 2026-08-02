@@ -30,6 +30,10 @@
 .PARAMETER RunLevel
     运行级别（LIMITED / HIGHEST，默认 LIMITED）。
 
+.PARAMETER SchtasksExe
+    schtasks 可执行文件路径；默认 "schtasks"。测试时可注入假实现
+    （记录参数、模拟失败），禁止操作真实任务。
+
 .PARAMETER Force
     注册前先删除同名任务（覆盖式注册）。
 
@@ -49,6 +53,7 @@ param(
     [string]$WeeklyDay = "SAT",
     [string]$WeeklyTime = "09:00",
     [string]$RunLevel = "LIMITED",
+    [string]$SchtasksExe = "schtasks",
     [switch]$Force
 )
 
@@ -84,6 +89,32 @@ if (-not (Test-Path $runWeekly)) { throw "找不到启动脚本: $runWeekly" }
 $dailyTask = "$TaskPrefix-Daily"
 $weeklyTask = "$TaskPrefix-Weekly"
 
+# ---------------------------------------------------------------------- #
+# 统一 schtasks 调用：预览与执行共用同一参数数组，杜绝两套逻辑分叉；
+# 每次调用后检查 $LASTEXITCODE，非零立即 throw（fail-fast）。
+# ---------------------------------------------------------------------- #
+
+function Invoke-Schtasks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$ArgList
+    )
+    $cmdline = "schtasks " + ($ArgList -join " ")
+    Write-Host "COMMAND: $cmdline"
+    & $SchtasksExe @ArgList
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        throw "schtasks 执行失败（exit $code）: $cmdline"
+    }
+    return $code
+}
+
+function Task-Exists {
+    param([string]$Name)
+    & $SchtasksExe /Query /TN "$Name" 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
 function Register-Task {
     param(
         [string]$Name,
@@ -93,33 +124,73 @@ function Register-Task {
         [string]$Script
     )
     $action = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Script`""
-    $cmd = "schtasks /Create /TN `"$Name`" /SC $Schedule"
-    if ($Schedule -eq "WEEKLY") { $cmd += " /D $Day" }
-    $cmd += " /ST $Time /RL $RunLevel /TR `"$action`" /F"
-    Write-Host "COMMAND: $cmd"
+
+    # 唯一参数来源：Daily 不得带 /D，Weekly 才带 /D <Day>。
+    # 预览（COMMAND: 打印）与实际执行共用 $createArgs，保证不会分叉。
+    $createArgs = @(
+        "/Create",
+        "/TN", $Name,
+        "/SC", $Schedule
+    )
+    if ($Schedule -eq "WEEKLY" -and $Day) {
+        $createArgs += @("/D", $Day)
+    }
+    $createArgs += @(
+        "/ST", $Time,
+        "/RL", $RunLevel,
+        "/TR", $action,
+        "/F"
+    )
 
     if ($Force -and $PSCmdlet.ShouldProcess($Name, "删除旧任务（Force）")) {
-        schtasks /Delete /TN "$Name" /F 2>$null | Out-Null
-    }
-    if ($PSCmdlet.ShouldProcess($Name, "注册计划任务")) {
-        # 注意：DAILY 任务不得带 /D（schtasks 对 /SC DAILY 不接受 /D 参数）；
-        # 旧实现无条件附加 /D $Day（Daily 传 $null）导致
-        # "Invalid syntax. Value expected for '/D'" 而创建失败。
-        if ($Schedule -eq "WEEKLY") {
-            schtasks /Create /TN "$Name" /SC $Schedule /D $Day /ST $Time /RL $RunLevel /TR "$action" /F
+        if (Task-Exists $Name) {
+            Invoke-Schtasks @("/Delete", "/TN", $Name, "/F")
         } else {
-            schtasks /Create /TN "$Name" /SC $Schedule /ST $Time /RL $RunLevel /TR "$action" /F
+            Write-Host "任务不存在，跳过删除: $Name"
+        }
+    }
+
+    if ($PSCmdlet.ShouldProcess($Name, "注册计划任务")) {
+        Invoke-Schtasks $createArgs
+        if (-not (Task-Exists $Name)) {
+            throw "注册后验证失败：任务未创建 $Name"
         }
     }
 }
 
 Write-Host "仓库根目录: $RepoRoot"
 Write-Host "Python 解释器: $PythonExe"
-Register-Task $dailyTask "DAILY" $DailyTime $null $runDaily
-Register-Task $weeklyTask "WEEKLY" $WeeklyTime $WeeklyDay $runWeekly
 
-if (-not $PSCmdlet.ShouldProcess) {
-    Write-Host "(WhatIf) 以上为预览，未实际注册。去掉 -WhatIf 以执行。"
-} else {
-    Write-Host "已注册任务: $dailyTask, $weeklyTask"
+$failures = @()
+try {
+    Register-Task $dailyTask "DAILY" $DailyTime $null $runDaily
+    Register-Task $weeklyTask "WEEKLY" $WeeklyTime $WeeklyDay $runWeekly
+} catch {
+    $failures += $_
 }
+
+if ($WhatIfPreference) {
+    Write-Host "(WhatIf) 以上为预览，未实际注册。去掉 -WhatIf 以执行。"
+    exit 0
+}
+
+# 注册结束后统一验证两个任务均存在（不依赖中途输出）。
+foreach ($t in @($dailyTask, $weeklyTask)) {
+    if (-not (Task-Exists $t)) {
+        $failures += "任务未注册: $t"
+    }
+}
+
+if ($failures.Count -gt 0) {
+    Write-Host "安装失败："
+    foreach ($f in $failures) { Write-Host "  - $f" }
+    # 部分安装：列出已成功注册的任务，供人工清理，绝不打印整体成功。
+    $registered = @($dailyTask, $weeklyTask) | Where-Object { Task-Exists $_ }
+    if ($registered.Count -gt 0) {
+        Write-Host "部分安装：以下任务已注册（需人工处理）: $($registered -join ', ')"
+    }
+    exit 1
+}
+
+Write-Host "已注册任务: $dailyTask, $weeklyTask"
+exit 0
