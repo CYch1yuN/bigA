@@ -22,6 +22,10 @@ providers:
   primary: "akshare"
   # 备用数据源
   fallback: "baostock"
+  # 旁路校验源（validator）：仅交叉核验，不进入回测主链、不生成复权字段。
+  # westock 当前实测 fq=qfq 与 raw 逐字节相同（2026-08-02 留档），暂不作为复权源。
+  validators:
+    - "westock"
   # 抓取失败后的重试次数（不含首次请求）；总尝试次数 = 1 + max_retries
   max_retries: 3
   # 单次请求间隔（秒），不得为负
@@ -67,6 +71,17 @@ quality:
     close_relative_tolerance: 0.02  # 2%
     # 成交量相对差异容忍度
     volume_relative_tolerance: 0.10  # 10%
+
+  # westock（腾讯自选股）旁路核验规则：只做未复权交叉核验，不生成复权字段。
+  # 连续异常升级：连续 consecutive_days 天出现超阈值差异后，告警升级为
+  # escalation_severity（默认仍为 warning，调用方可据此提高关注度）。
+  westock_cross_source:
+    severity: warning
+    close_relative_tolerance: 0.02   # 2%
+    volume_relative_tolerance: 0.10  # 10%
+    amount_relative_tolerance: 0.10  # 10%
+    consecutive_days: 3
+    escalation_severity: warning
 
 manifest:
   # 内容哈希计算时排除的非确定字段（不影响复现性）

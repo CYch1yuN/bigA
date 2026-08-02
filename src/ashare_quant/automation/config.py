@@ -147,6 +147,32 @@ class QualityGateConfig(BaseModel):
         return v
 
 
+class ValidatorsConfig(BaseModel):
+    """旁路校验源（validator）配置。
+
+    校验器只做交叉核验，**绝不参与**回测主链、不生成复权字段；
+    校验失败只产生告警与报告，**不得**改变主流程成功状态（严格旁路）。
+    """
+
+    # 启用哪些校验器；当前仅支持 westock
+    enabled: list[str] = Field(default_factory=list)
+    # 连续异常升级阈值：连续 N 个交易日出现超阈值差异后升级处理
+    consecutive_days: int = Field(default=3, ge=1, le=365)
+    # 升级后的严重等级（"warning" 之上仅告警更醒目，仍不阻断主流程）
+    escalation_severity: str = "warning"
+
+    @field_validator("escalation_severity")
+    @classmethod
+    def _check_severity(cls, v: str) -> str:
+        if v not in ("warning", "critical"):
+            raise ValueError(f"escalation_severity 必须为 warning/critical，得到 {v!r}")
+        return v
+
+    @property
+    def westock_enabled(self) -> bool:
+        return "westock" in self.enabled
+
+
 class AccountConfig(BaseModel):
     """模拟账户配置。"""
 
@@ -331,6 +357,7 @@ class AutomationConfig(BaseModel):
     calendar: CalendarConfig = Field(default_factory=CalendarConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     quality: QualityGateConfig = Field(default_factory=QualityGateConfig)
+    validators: ValidatorsConfig = Field(default_factory=ValidatorsConfig)
     accounts: list[AccountConfig] = Field(default_factory=list)
     observation: ObservationConfig = Field(default_factory=ObservationConfig)
     lock: LockConfig = Field(default_factory=LockConfig)

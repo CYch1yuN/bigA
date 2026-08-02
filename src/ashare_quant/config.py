@@ -50,6 +50,8 @@ class SchemaConfig(BaseModel):
 class ProvidersConfig(BaseModel):
     primary: str = "akshare"
     fallback: str = "baostock"
+    # 旁路校验源（validator）：只做交叉核验，不进入回测主链、不生成复权字段
+    validators: list[str] = Field(default_factory=lambda: ["westock"])
     # 失败后的重试次数（不含首次请求）；总尝试次数 = 1 + max_retries
     max_retries: int = Field(default=3, ge=0)
     # 重试间隔（秒），不得为负

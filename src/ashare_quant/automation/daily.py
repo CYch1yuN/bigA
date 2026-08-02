@@ -94,6 +94,7 @@ from .simulated_account import (
 )
 from .state import StateStore, atomic_write_text
 from .audit import write_audit_artifacts, write_manifest, verify_manifest
+from .westock_hook import WestockHookResult, WestockValidationHook
 
 __all__ = [
     "DAILY_STEPS",
@@ -416,6 +417,8 @@ class DailyPipeline:
     steady_params: SteadyParams = field(default_factory=SteadyParams)
     aggressive_params: AggressiveParams = field(default_factory=AggressiveParams)
     universe_kwargs: dict[str, Any] = field(default_factory=dict)
+    # 旁路核验 hook（严格旁路：失败只告警，不改变主流程成功状态）
+    westock_hook: Optional["WestockValidationHook"] = None
 
     # ------------------------------------------------------------------ #
     def __call__(self, ctx: PipelineContext) -> None:
@@ -550,6 +553,19 @@ class DailyPipeline:
                 raise DataQualityBlockedError(
                     f"warning 数量 {counts['warning']} 超过阈值 {max_warn}，阻断下游"
                 )
+
+        # -- 4.5 westock 旁路核验（严格旁路） ---------------------------- #
+        # 只做未复权交叉核验与告警报告，任何失败都不改变主流程成功状态。
+        if self.westock_hook is not None and cfg.validators.westock_enabled:
+            with ctx.step("westock_validation") as step:
+                hook_result = self._run_westock_hook(ctx, as_of)
+                ctx.scratch["westock_validation"] = hook_result
+                step.detail.update(hook_result.to_dict())
+        else:
+            ctx.logger.info(
+                "westock_validation",
+                "westock 旁路核验未启用（未注入 hook 或 validators.enabled 不含 westock）",
+            )
 
         # -- 账户与账房先生 --------------------------------------------- #
         manager = SimulatedAccountManager(cfg, self.backtest_config)
@@ -728,6 +744,39 @@ class DailyPipeline:
             bundle.quotes,
             security_master=bundle.security_master,
             trade_calendar=bundle.calendar_df,
+        )
+
+    def _run_westock_hook(
+        self, ctx: PipelineContext, as_of: date
+    ) -> "WestockHookResult":
+        """执行 westock 旁路核验（严格旁路，绝不阻断主流程）。
+
+        数据源不可用 / 无注入 fetcher / 无匹配数据时一律降级为
+        unavailable / no_data 并记录，不影响主流程退出码。
+        """
+        hook = self.westock_hook
+        if hook is None:
+            return WestockHookResult(
+                status="skipped", message="未注入 westock hook"
+            )
+        bundle = ctx.scratch.get("bundle")
+        if bundle is None or bundle.quotes is None or bundle.quotes.empty:
+            return WestockHookResult(
+                status="no_data", message="主源行情为空，跳过 westock 核验"
+            )
+        quotes = bundle.quotes
+        # 取第一个 symbol 做核验样本（当前为轻量旁路；全池核验留待正式 provider）
+        symbol = quotes["symbol"].dropna().iloc[0]
+        start = as_of  # 与每日增量对齐：只核验当日数据
+        end = as_of
+        calendar_df = getattr(bundle, "calendar_df", None)
+        return hook.run(
+            quotes,
+            symbol=str(symbol),
+            start=start,
+            end=end,
+            as_of=as_of,
+            calendar=calendar_df,
         )
 
     def _load_pending(
