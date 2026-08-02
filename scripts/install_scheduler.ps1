@@ -101,8 +101,18 @@ function Invoke-Schtasks {
     )
     # 注意：COMMAND 预览由调用方（Register-Task）在构造参数数组后、ShouldProcess
     # 之前打印，保证 -WhatIf 模式下也能看到完整命令。此处只执行并检查退出码。
-    & $SchtasksExe @ArgList
-    $code = $LASTEXITCODE
+    # $ErrorActionPreference='Stop' 会把非零外部命令退出码提升为 NativeCommandError，
+    # 故执行前局部降级，改用 $LASTEXITCODE 显式判断。
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $SchtasksExe @ArgList
+        $code = $LASTEXITCODE
+    } catch {
+        $code = 1
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
     if ($code -ne 0) {
         $cmdline = "schtasks " + ($ArgList -join " ")
         throw "schtasks 执行失败（exit $code）: $cmdline"
@@ -112,8 +122,20 @@ function Invoke-Schtasks {
 
 function Task-Exists {
     param([string]$Name)
-    & $SchtasksExe /Query /TN "$Name" 2>$null | Out-Null
-    return ($LASTEXITCODE -eq 0)
+    # schtasks /Query 对不存在的任务返回非零，PowerShell 5.1 在
+    # $ErrorActionPreference='Stop' 下会把非零外部命令退出码提升为
+    # NativeCommandError 并中断脚本——因此这里必须局部降级错误偏好。
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $SchtasksExe /Query /TN "$Name" 2>$null | Out-Null
+        $exists = ($LASTEXITCODE -eq 0)
+    } catch {
+        $exists = $false
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    return $exists
 }
 
 function Register-Task {

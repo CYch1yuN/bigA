@@ -41,8 +41,10 @@ def _run_install(
     prefix: str = "AShareQuantAutomation",
 ) -> subprocess.CompletedProcess[str]:
     log = tmp_path / "schtasks.log"
+    state = tmp_path / "fake_state"
     env = dict(os.environ)
     env["FAKE_SCHTASKS_LOG"] = str(log)
+    env["FAKE_SCHTASKS_STATE"] = str(state)
     if fail:
         env["FAKE_SCHTASKS_FAIL"] = fail
     cmd = [
@@ -150,31 +152,87 @@ def test_create_failure_exits_nonzero_no_success(tmp_path: Path) -> None:
 
 
 def test_daily_failure_reports_partial_install(tmp_path: Path) -> None:
-    """Daily 创建失败（模拟 /SC DAILY 语法错误）→ 报告部分安装，绝不打印成功。"""
+    """Daily 创建失败 → 脚本非零、不打印成功、报告安装失败。
+
+    fail-fast 语义：Daily 失败后 Weekly 不再尝试（try 块中断），因此
+    已注册任务列表为空，「部分安装」提示不出现，但「安装失败」必须出现。
+    """
     proc = _run_install(tmp_path, fail="/SC DAILY")
     assert proc.returncode != 0
     assert "已注册任务" not in proc.stdout
-    assert "部分安装" in proc.stdout, "必须报告部分安装状态"
-    assert "AShareQuantAutomation-Weekly" in proc.stdout
+    assert "安装失败" in proc.stdout
+    assert "schtasks 执行失败" in proc.stdout
 
 
 def test_weekly_failure_reports_partial_install(tmp_path: Path) -> None:
-    """Weekly 创建失败 → Daily 已注册被列出，整体非零。"""
+    """Weekly 创建失败（Daily 已成功）→ 报告部分安装并列出 Daily，整体非零。"""
     proc = _run_install(tmp_path, fail="/SC WEEKLY")
     assert proc.returncode != 0
     assert "已注册任务" not in proc.stdout
     assert "部分安装" in proc.stdout
+    assert "AShareQuantAutomation-Daily" in proc.stdout
 
 
 def test_force_delete_failure_stops_install(tmp_path: Path) -> None:
-    """Force 模式下 /Delete 失败 → 脚本非零退出，不继续注册。"""
-    proc = _run_install(tmp_path, fail="/Delete", force=True)
+    """Force 模式下 /Delete 失败 → 脚本非零退出，不继续注册。
+
+    前提：任务已存在（预置假 schtasks 状态文件），Force 才会真正执行 /Delete。
+    """
+    # 预置两个任务已存在，使 Force 分支实际发出 /Delete
+    state = tmp_path / "fake_state"
+    state.mkdir(parents=True, exist_ok=True)
+    for name in ("AShareQuantAutomation-Daily", "AShareQuantAutomation-Weekly"):
+        (state / f"{name}.txt").write_text("created", encoding="utf-8")
+    log = tmp_path / "schtasks.log"
+    env = dict(os.environ)
+    env["FAKE_SCHTASKS_LOG"] = str(log)
+    env["FAKE_SCHTASKS_STATE"] = str(state)
+    env["FAKE_SCHTASKS_FAIL"] = "/Delete"
+    proc = subprocess.run(
+        [
+            PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", str(SCRIPT), "-SchtasksExe", str(FAKE),
+            "-TaskPrefix", "AShareQuantAutomation", "-Force",
+        ],
+        capture_output=True, text=True, cwd=str(ROOT), env=env,
+        timeout=180, encoding="utf-8", errors="replace",
+    )
     assert proc.returncode != 0
     assert "已注册任务" not in proc.stdout
-    lines = _log_lines(proc)
+    lines = [ln.strip() for ln in log.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
     # 删除失败后不得出现后续 /Create
     delete_idx = next(i for i, ln in enumerate(lines) if "/Delete" in ln)
     assert not any("/Create" in ln for ln in lines[delete_idx:])
+
+
+def test_query_missing_task_does_not_crash(tmp_path: Path) -> None:
+    """/Query 目标任务不存在（stderr + 非零）→ Task-Exists 返回 false 而非抛错。
+
+    回归锁定：$ErrorActionPreference='Stop' 会把非零外部命令退出码提升为
+    NativeCommandError 中断脚本——Force 安装时对不存在的任务做 /Query
+    探测必须静默返回「不存在」并继续（真实安装曾因此失败）。
+    """
+    # 假 schtasks 初始无任何任务：创建前的 /Query 探测均失败（像真实 schtasks），
+    # 创建后的验证 /Query 应成功。
+    proc = _run_install(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "已注册任务: AShareQuantAutomation-Daily, AShareQuantAutomation-Weekly" in proc.stdout
+    # 每个任务应恰好创建一次（Force=false 时不删除）
+    lines = _log_lines(proc)
+    for name in ("AShareQuantAutomation-Daily", "AShareQuantAutomation-Weekly"):
+        creates = [ln for ln in lines if "/Create" in ln and name in ln]
+        assert len(creates) == 1, f"{name} 应恰好创建一次: {creates}"
+
+
+def test_force_with_missing_tasks_skips_delete(tmp_path: Path) -> None:
+    """Force 模式下任务不存在 → 跳过删除（不抛 NativeCommandError），正常创建。"""
+    proc = _run_install(tmp_path, force=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "已注册任务" in proc.stdout
+    assert "任务不存在，跳过删除" in proc.stdout
+    lines = _log_lines(proc)
+    # 不存在 → 不发出 /Delete（只 /Create）
+    assert not any("/Delete" in ln for ln in lines)
 
 
 # ---------------------------------------------------------------------- #
