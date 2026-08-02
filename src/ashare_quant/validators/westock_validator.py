@@ -379,12 +379,36 @@ class WestockValidator:
 
     @staticmethod
     def _summarize(df: pd.DataFrame) -> dict[str, Any]:
-        return {
+        """响应摘要。
+
+        日期必须按列名读取（date/trade_date），禁止依赖列顺序——否则当
+        westock 返回首列为 code 时会把代码当日期（如 date_min="sh600519"）。
+        无合法日期列时 date_min/date_max 返回 null 并记录 summary_error，
+        绝不拿其他列冒充日期。
+        """
+        summary: dict[str, Any] = {
             "rows": int(len(df)),
             "columns": [str(c) for c in df.columns],
-            "date_min": str(df.iloc[:, 0].min()) if not df.empty else None,
-            "date_max": str(df.iloc[:, 0].max()) if not df.empty else None,
+            "date_min": None,
+            "date_max": None,
         }
+        if df.empty:
+            return summary
+        lowered = {str(c).lower(): str(c) for c in df.columns}
+        date_col = None
+        for cand in ("trade_date", "date"):
+            if cand in lowered:
+                date_col = lowered[cand]
+                break
+        if date_col is None:
+            summary["summary_error"] = "缺少 date/trade_date 列，未生成日期范围"
+            return summary
+        try:
+            summary["date_min"] = str(df[date_col].min())
+            summary["date_max"] = str(df[date_col].max())
+        except Exception as exc:  # noqa: BLE001 - 摘要失败不阻断主校验
+            summary["summary_error"] = f"日期列解析失败: {type(exc).__name__}"
+        return summary
 
 
 __all__ = ["WestockValidator", "ValidationResult", "AVAILABLE", "UNAVAILABLE", "NO_DATA"]

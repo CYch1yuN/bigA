@@ -762,3 +762,149 @@ def test_cli_status_readonly(capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "自动化系统状态" in out
+
+
+# ---------------------------------------------------------------------- #
+# Gate 4B 正式观察 trigger 区分（manual vs scheduled）
+# ---------------------------------------------------------------------- #
+
+def test_run_record_default_trigger_is_manual():
+    """RunRecord 默认 trigger=manual；旧记录（缺字段）加载也视为 manual。"""
+    from ashare_quant.automation.models import RunRecord
+
+    rec = RunRecord(run_id="x", task_type=TaskType.DAILY, as_of_date=date(2026, 8, 3))
+    assert rec.trigger == "manual"
+    legacy = RunRecord.from_dict(
+        {
+            "run_id": "y",
+            "task_type": "daily",
+            "as_of_date": "2026-08-03",
+            "state": "SUCCESS",
+        }
+    )
+    assert legacy.trigger == "manual"
+
+
+def test_run_daily_persists_trigger(tmp_path):
+    """run_daily 透传 trigger 到运行记录（scheduled 落盘可被 Gate 4B 识别）。"""
+    config, source, cal, trade_dates, app_cfg, uk = _synthetic(tmp_path)
+    from ashare_quant.automation.daily import DailyPipeline, run_daily
+
+    store = StateStore(config.state_dir)
+    d = trade_dates[-1]
+    run_daily(
+        config,
+        as_of_date=d,
+        data_source=source,
+        pipeline=DailyPipeline(app_config=app_cfg, calendar=cal, universe_kwargs=uk),
+        state_store=store,
+        trigger="scheduled",
+    )
+    rec = store.load_latest(TaskType.DAILY)
+    assert rec is not None
+    assert rec.trigger == "scheduled"
+
+
+def test_gate4b_observation_ignores_manual_runs(tmp_path):
+    """正式观察只统计 scheduled：手工首跑（默认 manual）不得计入 60 日。"""
+    config, source, cal, trade_dates, app_cfg, uk = _synthetic(tmp_path)
+    from ashare_quant.automation.daily import DailyPipeline, run_daily
+
+    store = StateStore(config.state_dir)
+    d = trade_dates[-1]
+    # 手工运行：不带 --trigger，默认 manual
+    run_daily(
+        config,
+        as_of_date=d,
+        data_source=source,
+        pipeline=DailyPipeline(app_config=app_cfg, calendar=cal, universe_kwargs=uk),
+        state_store=store,
+    )
+    scheduled = [
+        r for r in store.list_runs(TaskType.DAILY)
+        if getattr(r, "trigger", "manual") == "scheduled"
+    ]
+    assert scheduled == []
+    assert store.load_latest(TaskType.DAILY).trigger == "manual"
+
+
+# ---------------------------------------------------------------------- #
+# Gate 4B tracker 直接调用（真实 _track_real，不复制过滤表达式）
+# ---------------------------------------------------------------------- #
+
+def _track_real_run(tmp_path, *, trigger, online, synthetic, write_data_update):
+    """构造一日运行 + data-update.json 证明，直接调用 _track_real 返回 summary。"""
+    _scripts = Path(__file__).resolve().parents[1] / "scripts"
+    if str(_scripts) not in sys.path:
+        sys.path.insert(0, str(_scripts))
+    import gate4b_observation as g4b
+
+    config, source, cal, trade_dates, app_cfg, uk = _synthetic(tmp_path)
+    from ashare_quant.automation.daily import DailyPipeline, run_daily
+
+    store = StateStore(config.state_dir)
+    d = trade_dates[-1]
+    run_daily(
+        config,
+        as_of_date=d,
+        data_source=source,
+        pipeline=DailyPipeline(app_config=app_cfg, calendar=cal, universe_kwargs=uk),
+        state_store=store,
+        trigger=trigger,
+    )
+    rep_dir = config.reports_dir / "daily" / d.isoformat()
+    du = rep_dir / "data-update.json"
+    if write_data_update:
+        payload = {"as_of": d.isoformat(), "row_count": 10, "symbols_succeeded": 1}
+        if online is not None:
+            payload["online"] = online
+        if synthetic is not None:
+            payload["synthetic"] = synthetic
+        du.write_text(json.dumps(payload), encoding="utf-8")
+    elif du.exists():
+        du.unlink()
+    # 真实调用 tracker（calendar 注入合成日历，避免文件日历依赖）
+    return g4b._track_real(config, calendar=cal)
+
+
+def test_track_real_manual_success_not_counted(tmp_path):
+    """manual + 真实在线证明：不计入（trigger 过滤），保持 0/60。"""
+    s = _track_real_run(tmp_path, trigger="manual", online=True, synthetic=False, write_data_update=True)
+    assert s["observation_progress"] == 0
+    assert s["real_success_trading_days"] == 0
+
+
+def test_track_real_scheduled_online_true_counts(tmp_path):
+    """scheduled + online=true + synthetic=false：计入 1/60。"""
+    s = _track_real_run(tmp_path, trigger="scheduled", online=True, synthetic=False, write_data_update=True)
+    assert s["observation_progress"] == 1
+    assert s["real_success_trading_days"] == 1
+    assert s["violations"] == []
+
+
+def test_track_real_scheduled_synthetic_rejected(tmp_path):
+    """scheduled + synthetic=true：不计入，violations 明确合成原因。"""
+    s = _track_real_run(tmp_path, trigger="scheduled", online=True, synthetic=True, write_data_update=True)
+    assert s["observation_progress"] == 0
+    assert any("合成数据不得计入" in v for v in s["violations"])
+
+
+def test_track_real_scheduled_offline_rejected(tmp_path):
+    """scheduled + online=false：不计入。"""
+    s = _track_real_run(tmp_path, trigger="scheduled", online=False, synthetic=False, write_data_update=True)
+    assert s["observation_progress"] == 0
+    assert any("非在线数据" in v for v in s["violations"])
+
+
+def test_track_real_missing_online_synthetic_fail_closed(tmp_path):
+    """scheduled + 来源字段缺失：fail-closed 不计入，不得猜测。"""
+    s = _track_real_run(tmp_path, trigger="scheduled", online=None, synthetic=None, write_data_update=True)
+    assert s["observation_progress"] == 0
+    assert any("online/synthetic 字段缺失" in v for v in s["violations"])
+
+
+def test_track_real_missing_data_update_fail_closed(tmp_path):
+    """scheduled + SUCCESS 但 data-update.json 缺失：fail-closed 不计入。"""
+    s = _track_real_run(tmp_path, trigger="scheduled", online=True, synthetic=False, write_data_update=False)
+    assert s["observation_progress"] == 0
+    assert any("data-update.json 不存在" in v for v in s["violations"])

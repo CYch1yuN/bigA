@@ -134,6 +134,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
     as_of = _as_of(args)
     store = StateStore(config.state_dir)
     dry_run = bool(getattr(args, "dry_run", False))
+    trigger = str(getattr(args, "trigger", "manual"))
 
     if getattr(args, "synthetic", False):
         env = _build_synthetic_env(config)
@@ -152,6 +153,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
             pipeline=pipeline,
             state_store=store,
             dry_run=dry_run,
+            trigger=trigger,
         )
     else:
         if as_of is None:
@@ -164,6 +166,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
             data_source=data_source,
             state_store=store,
             dry_run=dry_run,
+            trigger=trigger,
         )
 
     print(f"daily {as_of.isoformat()}: {out.state.value} (exit={out.exit_code})")
@@ -340,6 +343,7 @@ def cmd_rerun(args: argparse.Namespace) -> int:
     as_of = _as_of(args)
     store = StateStore(config.state_dir)
     task = getattr(args, "task", "daily")
+    trigger = str(getattr(args, "trigger", "manual"))
 
     if task == "daily":
         if getattr(args, "synthetic", False):
@@ -359,6 +363,7 @@ def cmd_rerun(args: argparse.Namespace) -> int:
                 pipeline=pipeline,
                 state_store=store,
                 force_retry=True,
+                trigger=trigger,
             )
         else:
             if as_of is None:
@@ -371,6 +376,7 @@ def cmd_rerun(args: argparse.Namespace) -> int:
                 data_source=data_source,
                 state_store=store,
                 force_retry=True,
+                trigger=trigger,
             )
     else:  # weekly
         if getattr(args, "synthetic", False):
@@ -487,6 +493,12 @@ def register(subparsers: Any) -> None:
         action="store_true",
         help="本机离线验证：注入合成行情与日历（非真实在线数据）",
     )
+    p_d.add_argument(
+        "--trigger",
+        choices=("manual", "scheduled"),
+        default="manual",
+        help="触发来源：计划任务必须传 scheduled（计入 Gate 4B 正式观察）；手工重跑默认 manual",
+    )
     p_d.set_defaults(func=cmd_daily)
 
     # weekly
@@ -532,6 +544,12 @@ def register(subparsers: Any) -> None:
         "--synthetic",
         action="store_true",
         help="本机离线验证：注入合成行情与日历",
+    )
+    p_r.add_argument(
+        "--trigger",
+        choices=("manual", "scheduled"),
+        default="manual",
+        help="触发来源：计划任务必须传 scheduled（计入 Gate 4B 正式观察）；手工重跑默认 manual",
     )
     p_r.set_defaults(func=cmd_rerun)
 

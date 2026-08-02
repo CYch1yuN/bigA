@@ -8,7 +8,7 @@
 - Codex：按 `docs/review-gates.md` 审核数据、回测、策略与自动化。
 - 每个阶段使用独立的 `trae/phase-*` 分支和 Pull Request；上一阶段通过后再开始下一阶段。
 
-当前阶段：`phase-2-backtester`（任务规格已就绪，等待Trae实现）。
+当前阶段：`Phase 4 / Gate 4B`。历史 60 日回放预检已通过，真实连续运行尚未开始（0/60）；系统保持研究与模拟定位，不具备实盘资格。
 
 ## 安全要求
 
@@ -181,17 +181,22 @@ Parquet 用于文件存储，DuckDB 用于查询。`data/` 目录与完整行情
 执行环境检查、每日/每周任务、区间补跑与失败重跑；作业状态持久化在
 `state/dashboard/jobs/`，仅作用于模拟账户。
 
-**当前验证结论（2026-08-02）**：
+**当前验证结论（2026-08-03）**：
 
 - 已接通并验证：真实数据源调用链（AKShare 主 + BaoStock 备）、交易日历筛选、
   逐日串行补跑、状态机（queued/running/succeeded/partial/failed/skipped/interrupted）、
   连续异常升级、令牌参数绑定、严格旁路（校验失败不阻断主流程）。
-- **尚未在可访问行情接口的网络中验证**：真实抓取并生成完整行情/信号/模拟账户产物。
-  在开发沙箱中，东方财富行情接口因网络出口限制无法访问，daily 如实降级为
-  `skipped`（`SKIPPED_DATA_UNAVAILABLE`），**未虚构成功**。
-- **待外部环境验证项**：在可访问 AKShare/BaoStock 行情接口的网络中运行
-  `ashare-quant automation daily --date <交易日>`，确认生成 curated 行情、
-  研究信号与模拟账户产物后，方可宣称"真实数据产物端到端成功"。
+- 已完成真实首跑：对业务日 `2026-07-31` 执行 daily，BaoStock 备用源接管
+  8/8 标的，取得 2,144 行真实行情；质量闸门 0 critical / 0 warning，生成
+  17 个行情、质量、信号、模拟订单与账户产物。该次为手工重跑，不计作
+  Gate 4B 正式连续运行。
+- 已完成 westock 旁路核验：对 `2026-07-31` 的 8 只标的拉取 westock
+  未复权日线（raw，无 qfq/hfq/adjustment_factor），与 BaoStock curated
+  交叉比较——close 最大偏差 0、volume 最大约 0.0009%（手→股换算后仅取整
+  差异）、amount 最大约 0.0003%，8/8 全部通过；westock 仍仅作旁路核验，
+  不进入回测、信号或模拟账户主链。
+- 当前非阻断缺口：AKShare 主源仍不可用、沪深 300 基准未取得、westock hook
+  尚未注入。系统继续如实记录来源、回退和缺失，不以虚构数据补齐。
 
 运行 `ashare-quant automation verify` 可检查数据源 SDK 是否可导入。
 
@@ -200,5 +205,7 @@ Parquet 用于文件存储，DuckDB 用于查询。`data/` 目录与完整行情
 - 阶段任务：`docs/trae/phase-1-data.md`
 - Phase 2任务：`docs/trae/phase-2-backtester.md`
 - 审核闸门：`docs/review-gates.md`
+- 未来升级路线图：`docs/future-roadmap.md`
+- Gate 4B 连续观察：`docs/gate4b-observation.md`
 - 已知缺口：`docs/phase-1-limitations.md`
 - 示例报告：`reports/phase-1/`

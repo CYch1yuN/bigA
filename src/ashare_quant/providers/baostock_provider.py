@@ -24,11 +24,40 @@ class BaoStockError(Exception):
 
 
 def _to_bs_code(symbol: str) -> str:
-    """将 6 位代码转为 BaoStock 格式 sh./sz.。"""
-    s = str(symbol).strip().zfill(6)
-    if s.startswith(("60", "68", "90", "11", "13")):
-        return f"sh.{s}"
-    return f"sz.{s}"
+    """将标准代码或 6 位代码转为 BaoStock 格式 ``sh./sz.``。
+
+    接受格式：``600000`` / ``600000.SH`` / ``000001.SZ`` / ``sh.600519``。
+    **北京交易所（bj./.BJ）明确不支持**：BaoStock SDK 对 BJ 未经验证，
+    一律抛 ValueError，禁止静默生成 ``bj.XXXXXX``。
+    非法代码（未知后缀、含空格、长度/数字不符）同样必须明确报错。
+    """
+    value = str(symbol).strip()
+    lower = value.lower()
+    # 已带市场前缀：sh.600000 / sz.000001；bj. 明确拒绝
+    if lower.startswith(("sh.", "sz.", "bj.")):
+        prefix, code = lower.split(".", 1)
+        if prefix == "bj":
+            raise ValueError(
+                f"BaoStock provider 当前仅支持 SH/SZ，不支持北京交易所: {symbol!r}"
+            )
+        if len(code) == 6 and code.isdigit():
+            return f"{prefix}.{code}"
+        raise ValueError(f"无法转换为 BaoStock 股票代码: {symbol!r}")
+    # 带市场后缀：600000.SH / 000001.SZ；.BJ 明确拒绝
+    if "." in value:
+        code_part, suffix = value.split(".", 1)
+        if suffix.lower() == "bj":
+            raise ValueError(
+                f"BaoStock provider 当前仅支持 SH/SZ，不支持北京交易所: {symbol!r}"
+            )
+        if suffix.lower() not in ("sh", "sz"):
+            raise ValueError(f"未知市场后缀，无法转换为 BaoStock 代码: {symbol!r}")
+        value = code_part
+    if len(value) != 6 or not value.isdigit():
+        raise ValueError(f"无法转换为 BaoStock 股票代码: {symbol!r}")
+    if value.startswith(("60", "68", "90", "11", "13")):
+        return f"sh.{value}"
+    return f"sz.{value}"
 
 
 class BaoStockProvider(DataProvider):

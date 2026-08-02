@@ -225,3 +225,46 @@ class TestImports:
         assert AVAILABLE == "available"
         assert UNAVAILABLE == "unavailable"
         assert NO_DATA == "no_data"
+
+
+# ---------------------------------------------------------------------- #
+# response_summary 日期列读取（禁止依赖列顺序）
+# ---------------------------------------------------------------------- #
+
+def test_summarize_picks_date_col_when_code_is_first():
+    """code 列位于 date 列之前时，仍必须按列名取日期，不得用首列冒充。"""
+    df = pd.DataFrame(
+        {
+            "code": ["sh600519", "sh600519"],
+            "date": ["2026-07-30", "2026-07-31"],
+            "last": [1361.76, 1350.6],
+        }
+    )
+    s = WestockValidator._summarize(df)
+    assert s["date_min"] == "2026-07-30"
+    assert s["date_max"] == "2026-07-31"
+    assert "summary_error" not in s
+
+
+def test_summarize_handles_trade_date_alias():
+    df = pd.DataFrame({"trade_date": ["2026-07-31"], "close": [1350.6]})
+    s = WestockValidator._summarize(df)
+    assert s["date_min"] == "2026-07-31"
+    assert s["date_max"] == "2026-07-31"
+
+
+def test_summarize_missing_date_col_does_not_use_symbol():
+    """无 date/trade_date 列：date_min/max 必须为 None 并记录 summary_error，
+    绝不允许拿 code/symbol 列冒充日期。"""
+    df = pd.DataFrame({"code": ["sh600519"], "last": [1350.6]})
+    s = WestockValidator._summarize(df)
+    assert s["date_min"] is None
+    assert s["date_max"] is None
+    assert "summary_error" in s
+    assert "缺少 date/trade_date 列" in s["summary_error"]
+
+
+def test_summarize_empty_df():
+    s = WestockValidator._summarize(pd.DataFrame())
+    assert s["rows"] == 0
+    assert s["date_min"] is None and s["date_max"] is None

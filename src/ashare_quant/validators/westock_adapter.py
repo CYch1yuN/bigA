@@ -21,6 +21,14 @@ import pandas as pd
 # westock 成交量原始单位：手（100 股/手）
 VOLUME_LOT_SHARES = 100.0
 
+# 单位换算元数据（适配结果必须带此元数据，可追溯、不可在通用校验内猜单位）
+VOLUME_UNIT_ATTR = "volume_unit"
+VOLUME_UNIT_META = {
+    "source_unit": "lot",
+    "normalized_unit": "share",
+    "multiplier": VOLUME_LOT_SHARES,
+}
+
 
 def kline_nodes_to_df(nodes: list[dict[str, Any]] | None) -> pd.DataFrame | None:
     """将 MCP data_kline 的 nodes 列表转换为标准 DataFrame。
@@ -36,6 +44,8 @@ def kline_nodes_to_df(nodes: list[dict[str, Any]] | None) -> pd.DataFrame | None
         df["volume"] = df["volume"].astype(float) * VOLUME_LOT_SHARES
     if "last" in df.columns and "close" not in df.columns:
         df = df.rename(columns={"last": "close"})
+    # 显式单位元数据：换算结果必须可追溯，禁止在通用校验公式内猜单位
+    df.attrs[VOLUME_UNIT_ATTR] = dict(VOLUME_UNIT_META)
     return df
 
 
@@ -60,6 +70,8 @@ def build_fetcher_from_kline(
 
 __all__ = [
     "VOLUME_LOT_SHARES",
+    "VOLUME_UNIT_ATTR",
+    "VOLUME_UNIT_META",
     "kline_nodes_to_df",
     "build_fetcher_from_kline",
 ]

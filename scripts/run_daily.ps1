@@ -30,5 +30,5 @@ if (-not (Test-Path $PythonExe)) {
     throw "找不到 Python 解释器: $PythonExe"
 }
 
-& $PythonExe -m ashare_quant.cli automation daily --config "$config" @args
+& $PythonExe -m ashare_quant.cli automation daily --config "$config" --trigger scheduled @args
 exit $LASTEXITCODE

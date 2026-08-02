@@ -12,6 +12,7 @@ import pytest
 
 from ashare_quant.constants import DAILY_QUOTE_FIELDS
 from ashare_quant.providers import AKShareProvider, BaoStockProvider, DataProvider
+from ashare_quant.providers.akshare_provider import _to_ak_code
 from ashare_quant.providers.baostock_provider import _to_bs_code
 from ashare_quant.standardize import Standardizer
 
@@ -71,6 +72,19 @@ def test_akshare_provider_is_dataprovider():
     p = AKShareProvider()
     assert isinstance(p, DataProvider)
     assert p.name == "akshare"
+
+
+@pytest.mark.parametrize(
+    ("symbol", "expected"),
+    [
+        ("600000", "600000"),
+        ("600000.SH", "600000"),
+        ("000001.SZ", "000001"),
+        ("sh.600519", "600519"),
+    ],
+)
+def test_to_ak_code(symbol, expected):
+    assert _to_ak_code(symbol) == expected
 
 
 def test_akshare_fetch_returns_intermediate_columns():
@@ -161,6 +175,65 @@ def test_to_bs_code():
     assert _to_bs_code("600000") == "sh.600000"
     assert _to_bs_code("000001") == "sz.000001"
     assert _to_bs_code("688989") == "sh.688989"
+    assert _to_bs_code("600000.SH") == "sh.600000"
+    assert _to_bs_code("000001.SZ") == "sz.000001"
+    assert _to_bs_code("sh.600519") == "sh.600519"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["12345", "ABCDEF", "", "600000.SHH", "sh.60051", "60000 0", None],
+)
+def test_to_ak_code_rejects_invalid(bad):
+    """非法代码必须明确报错，不能静默猜测。"""
+    with pytest.raises(ValueError):
+        _to_ak_code(bad)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["12345", "ABCDEF", "", "600000.SHH", "sh.60051", "60000 0", None],
+)
+def test_to_bs_code_rejects_invalid(bad):
+    """非法代码必须明确报错，不能静默猜测。"""
+    with pytest.raises(ValueError):
+        _to_bs_code(bad)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("bj", ["bj.430047", "430047.BJ", "920001.BJ", "bj.920001"])
+def test_to_bs_code_rejects_bj_market(bj):
+    """BaoStock 对北京交易所未经验证：bj./.BJ 必须明确拒绝，禁止静默生成 bj.XXXXXX。"""
+    with pytest.raises(ValueError, match="北京交易所"):
+        _to_bs_code(bj)
+
+
+@pytest.mark.parametrize("bj", ["bj.430047", "430047.BJ"])
+def test_to_ak_code_keeps_bj_independent(bj):
+    """AKShare 对 BJ 的支持独立于 BaoStock：AKShare 转换仍接受北京代码。"""
+    assert _to_ak_code(bj) == "430047"
+
+
+def test_providers_normalize_standard_symbols_before_sdk_call():
+    class RecordingAK(MockAKShareProvider):
+        calls = []
+
+        def _call_daily_hist(self, symbol, start, end, adjust):
+            self.calls.append(symbol)
+            return super()._call_daily_hist(symbol, start, end, adjust)
+
+    class RecordingBS(MockBaoStockProvider):
+        calls = []
+
+        def _call_daily_hist(self, bs_code, start, end, adjustflag):
+            self.calls.append(bs_code)
+            return super()._call_daily_hist(bs_code, start, end, adjustflag)
+
+    ak = RecordingAK(_akshare_hist_df(1), _akshare_hist_df(1))
+    bs = RecordingBS(_baostock_hist_df(1), _baostock_hist_df(1))
+    ak.fetch_daily_quotes("600000.SH", date(2024, 1, 2), date(2024, 1, 2))
+    bs.fetch_daily_quotes("000001.SZ", date(2024, 1, 2), date(2024, 1, 2))
+    assert ak.calls == ["600000", "600000"]
+    assert bs.calls == ["sz.000001", "sz.000001"]
 
 
 def test_baostock_fetch_then_standardize():

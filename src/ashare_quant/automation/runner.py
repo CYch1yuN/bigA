@@ -302,6 +302,7 @@ class AutomationRunner:
         logger: Optional[AutomationLogger] = None,
         alerts: Optional[AlertManager] = None,
         now_fn: Callable[[], datetime] = datetime.now,
+        trigger: str = "manual",
     ) -> None:
         self.config = config
         self.task_type = task_type
@@ -310,6 +311,7 @@ class AutomationRunner:
         self.state_store = state_store or StateStore(config.state_dir)
         self._logger_override = logger
         self._alerts_override = alerts
+        self.trigger = trigger
 
     # ------------------------------------------------------------------ #
     # 输入指纹
@@ -485,6 +487,7 @@ class AutomationRunner:
             input_hash=fingerprint.input_hash,
             started_at=self.now_fn(),
             attempt=attempt,
+            trigger=self.trigger,
         )
 
         # 4) 加锁

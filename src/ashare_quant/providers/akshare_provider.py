@@ -16,6 +16,31 @@ import pandas as pd
 from .base import DataProvider
 
 
+def _to_ak_code(symbol: str) -> str:
+    """将标准代码或数据源代码统一为 AKShare 使用的 6 位代码。
+
+    接受格式：``600000`` / ``600000.SH`` / ``000001.SZ`` / ``sh.600519``。
+    非法代码（未知后缀、含空格、长度/数字不符）必须明确报错，不静默猜测。
+    """
+    value = str(symbol).strip()
+    lower = value.lower()
+    # 带市场前缀：sh.600519 / sz.000001 / bj.xxxxxx
+    if lower.startswith(("sh.", "sz.", "bj.")):
+        prefix, code = lower.split(".", 1)
+        if len(code) == 6 and code.isdigit():
+            return code
+        raise ValueError(f"无法转换为 AKShare 6 位股票代码: {symbol!r}")
+    # 带市场后缀：600519.SH / 000001.SZ / 600519.BJ
+    if "." in value:
+        code_part, suffix = value.split(".", 1)
+        if suffix.lower() not in ("sh", "sz", "bj"):
+            raise ValueError(f"未知市场后缀，无法转换为 AKShare 代码: {symbol!r}")
+        value = code_part
+    if len(value) != 6 or not value.isdigit():
+        raise ValueError(f"无法转换为 AKShare 6 位股票代码: {symbol!r}")
+    return value
+
+
 class AKShareProvider(DataProvider):
     """AKShare 主数据源。
 
@@ -63,8 +88,9 @@ class AKShareProvider(DataProvider):
     ) -> pd.DataFrame:
         start = start_date.strftime("%Y%m%d")
         end = end_date.strftime("%Y%m%d")
-        raw_unadj = self._call_daily_hist(symbol, start, end, "")
-        raw_qfq = self._call_daily_hist(symbol, start, end, "qfq")
+        provider_symbol = _to_ak_code(symbol)
+        raw_unadj = self._call_daily_hist(provider_symbol, start, end, "")
+        raw_qfq = self._call_daily_hist(provider_symbol, start, end, "qfq")
         if raw_unadj is None or raw_unadj.empty:
             return pd.DataFrame()
 

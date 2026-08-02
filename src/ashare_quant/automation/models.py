@@ -350,6 +350,9 @@ class RunRecord:
     message: str = ""
     artifacts: list[str] = field(default_factory=list)
     schema_version: int = 1
+    # 触发来源："manual"（手工/脚本）或 "scheduled"（计划任务）。
+    # 默认 manual——旧记录（缺字段）一律视为手工运行，不计入 Gate 4B 正式观察。
+    trigger: str = "manual"
 
     # -- 状态操作 ------------------------------------------------------ #
 
@@ -403,6 +406,7 @@ class RunRecord:
             "message": self.message,
             "artifacts": list(self.artifacts),
             "steps": [s.to_dict() for s in self.steps],
+            "trigger": self.trigger,
         }
 
     @classmethod
@@ -425,6 +429,7 @@ class RunRecord:
             message=str(raw.get("message", "")),
             artifacts=list(raw.get("artifacts", [])),
             schema_version=int(raw.get("schema_version", 1)),
+            trigger=str(raw.get("trigger", "manual")),
         )
 
 

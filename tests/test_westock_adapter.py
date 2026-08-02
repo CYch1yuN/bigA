@@ -13,6 +13,8 @@ import pytest
 
 from ashare_quant.validators.westock_adapter import (
     VOLUME_LOT_SHARES,
+    VOLUME_UNIT_ATTR,
+    VOLUME_UNIT_META,
     build_fetcher_from_kline,
     kline_nodes_to_df,
 )
@@ -51,6 +53,24 @@ class TestKlineNodesToDf:
         curated_shares = 5512752.0
         dev = abs(df.loc[0, "volume"] - curated_shares) / curated_shares
         assert dev < 0.01  # 仅取整差异，绝非 99%
+
+    def test_volume_unit_metadata_attached(self) -> None:
+        """适配结果必须带单位元数据（source_unit/normalized_unit/multiplier）。"""
+        df = kline_nodes_to_df([NODE])
+        meta = df.attrs.get(VOLUME_UNIT_ATTR)
+        assert meta is not None
+        assert meta["source_unit"] == "lot"
+        assert meta["normalized_unit"] == "share"
+        assert meta["multiplier"] == 100
+        assert meta == VOLUME_UNIT_META
+
+    def test_unconverted_volume_would_expose_99pct_deviation(self) -> None:
+        """回归防护：若不换算（保留手单位），与 curated(股) 偏差应约 99%——
+        证明换算的必要性，防止未来有人绕过 adapter。"""
+        raw_lot_volume = 55128.0  # 原始 westock 手数
+        curated_shares = 5512752.0
+        dev = abs(raw_lot_volume - curated_shares) / curated_shares
+        assert dev > 0.9  # 未换算必然暴露大偏差（约 99%），绝不可静默通过
 
 
 class TestBuildFetcher:

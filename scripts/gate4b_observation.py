@@ -148,8 +148,21 @@ def main() -> int:
     else:
         summary = _run_replay()
     summary["generated_at"] = datetime.now().isoformat(timespec="seconds")
-    summary["synthetic"] = args.mode == "precheck"
-    summary["online"] = False
+    if args.mode == "precheck":
+        # 历史回放预检：明确合成行情、离线
+        summary["synthetic"] = True
+        summary["online"] = False
+    else:
+        # track 模式：synthetic/online 由被检查日的真实来源证明汇总，
+        # 不固定写死——只要有任一交易日通过「online=true 且 synthetic=false」
+        # 的完整复核，online 即为 true（正式观察要求在线真实数据）。
+        summary["synthetic"] = False
+        summary["online"] = summary.get("observation_progress", 0) > 0
+    summary["trigger_note"] = (
+        "trigger=scheduled 仅是来源标签，不单独构成正式观察证明；"
+        "正式判定依赖 trigger=scheduled 与 online=true / synthetic=false / "
+        "产物完整性 / manifest / 无重复订单 / 账务恒等式组合（fail-closed）。"
+    )
     summary["disclaimer"] = (
         "本报告由 scripts/gate4b_observation.py 生成（代码可复现），"
         "内容为模拟/研究记录，未连接券商、未涉及真实资金。"
@@ -295,6 +308,9 @@ def _track_real(
     记录不是预期交易日，不能作为观察起点，否则会永久停在 0）。随后按交易日历
     生成连续 ``observation_target`` 个预期交易日；对每个预期交易日逐日复核：
 
+    0. 数据来源证明（fail-closed）：``data-update.json`` 存在且显式
+       ``online=true``、``synthetic=false``；缺失或字段缺失一律不计入，
+       不允许依据文件存在/运行成功猜测来源；
     1. 运行记录存在且 ``SUCCESS`` / exit 0（缺失或失败 = 违规）；
     2. 报告目录产物齐全（run.json / manifest.json / accounts.json /
        simulated-orders.json / signals.json）；
@@ -304,6 +320,8 @@ def _track_real(
     5. 每日账务恒等式 cash + position_value == total_equity（无无法解释的
        权益变化）；现金非负。
 
+    说明：``trigger=scheduled`` 只是来源标签，不单独构成正式观察证明；
+    正式判定必须组合 trigger + online/synthetic 证明 + 产物完整性。
     只有从启动日起**连续全部通过**的预期交易日才计入进度；任何一天缺失、
     失败或任一项复核不过，进度即中断（连续语义，与自然日无关——周末由
     交易日历跳过，不会重置计数）。
@@ -329,6 +347,13 @@ def _track_real(
             }
 
     records = store.list_runs(TaskType.DAILY)
+    # Gate 4B 正式观察只统计「计划任务触发」的运行（trigger=scheduled）。
+    # 手工重跑与历史回放（manual，含旧记录缺 trigger 字段默认 manual）
+    # 一律不计入——避免手工补跑被误计为正式连续运行（0/60 必须从
+    # 真实自动任务启动日起算）。
+    # 注意：trigger 仅作来源标签；online/synthetic 由每日 data-update.json
+    # 证明（见下方复核步骤 0，fail-closed），两者组合才是正式判定依据。
+    records = [r for r in records if getattr(r, "trigger", "manual") == "scheduled"]
     by_date = {r.as_of_date: r for r in records}
     if not by_date:
         return {
@@ -397,6 +422,32 @@ def _track_real(
             day_ok = False
             issues.append(f"非 SUCCESS：{rec.state.value} / exit {rec.exit_code}")
         else:
+            # 真实数据来源证明（fail-closed）：data-update.json 必须存在，
+            # 且显式 online=true、synthetic=false。缺失或字段缺失一律不计入，
+            # 禁止依据文件存在/运行成功猜测数据来源。
+            du_path = rep_dir / "data-update.json"
+            if not du_path.exists():
+                day_ok = False
+                issues.append("数据来源证明缺失: data-update.json 不存在")
+            else:
+                try:
+                    du = json.loads(du_path.read_text(encoding="utf-8"))
+                    online = du.get("online")
+                    synthetic = du.get("synthetic")
+                    if online is None or synthetic is None:
+                        day_ok = False
+                        issues.append(
+                            "数据来源证明缺失: online/synthetic 字段缺失（fail-closed，不猜测）"
+                        )
+                    elif not online:
+                        day_ok = False
+                        issues.append(f"非在线数据: online={online!r}")
+                    elif synthetic:
+                        day_ok = False
+                        issues.append("合成数据不得计入: synthetic=true")
+                except (OSError, ValueError, json.JSONDecodeError) as exc:
+                    day_ok = False
+                    issues.append(f"data-update.json 读取失败: {exc}")
             # 产物齐全
             required = [
                 "run.json",

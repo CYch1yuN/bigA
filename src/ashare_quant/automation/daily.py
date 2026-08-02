@@ -1107,6 +1107,7 @@ def run_daily(
     force_retry: bool = False,
     dry_run: bool = False,
     now_fn: Callable[[], datetime] = datetime.now,
+    trigger: str = "manual",
 ) -> RunOutcome:
     """执行一次每日自动化运行。
 
@@ -1119,6 +1120,8 @@ def run_daily(
         force_retry: 忽略已有 SUCCESS 记录强制重跑。
         dry_run: 只跑流程不落盘（产物与账户状态均不写）。
         now_fn: 时钟注入。
+        trigger: 触发来源（manual/scheduled）；计划任务必须传 scheduled，
+            手工重跑默认 manual，不计入 Gate 4B 正式观察。
 
     Returns:
         ``RunOutcome``，含运行记录、退出码与产物列表。
@@ -1129,6 +1132,7 @@ def run_daily(
         data_source=data_source,
         state_store=state_store,
         now_fn=now_fn,
+        trigger=trigger,
     )
     return runner.run(
         pipeline or DailyPipeline(),

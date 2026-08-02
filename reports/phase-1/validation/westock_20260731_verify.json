@@ -1,6 +1,6 @@
 {
-  "title": "westock 严格旁路核验：2026-07-31 真实首跑 vs BaoStock curated",
-  "verified_at": "2026-08-03T02:20:04.719808+08:00",
+  "title": "westock 严格旁路核验：2026-07-31 vs BaoStock curated",
+  "verified_at": "2026-08-03T03:20:47.898102+08:00",
   "validator": "ashare_quant.validators.WestockValidator + westock_adapter",
   "date": "2026-07-31",
   "thresholds": {
@@ -16,11 +16,11 @@
     "not_in_backtest_or_daily_mainline": true,
     "fail_open": true
   },
-  "volume_unit_note": "westock data_kline volume 原始单位为手(100股)；由 src/ashare_quant/validators/westock_adapter.py 统一换算为股，原始响应见 data/raw/westock_20260731.json（Git 忽略）",
+  "volume_unit_note": "westock data_kline volume 原始单位为手(100股)；由 src/ashare_quant/validators/westock_adapter.py 统一换算为股 (source_unit=lot, normalized_unit=share, multiplier=100)；原始响应见 westock_20260731.json（Git 忽略）",
   "per_symbol": {
     "600000.SH": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "600000.SH",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -45,8 +45,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sh600000",
-        "date_max": "sh600000"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "8e321219578679d8d14cfcd4af7c8b8feb8aa0515af81b70cfcf8d294e459b87",
       "westock_content_hash": "911ccd2021d6f44fe74b59df916b9d5a8142ac9f463557633fae8383cc70a16f",
@@ -72,7 +72,7 @@
     },
     "600036.SH": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "600036.SH",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -97,8 +97,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sh600036",
-        "date_max": "sh600036"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "d2d151ddd67e951ef163df3b9f9114970805f8d1504fc2f8904f5e7d9620e867",
       "westock_content_hash": "061195f9f5b50a90e589a2c791046291dbe98f5c2e58f8d2c20dbb06c5c5c80e",
@@ -124,7 +124,7 @@
     },
     "600519.SH": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "600519.SH",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -149,8 +149,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sh600519",
-        "date_max": "sh600519"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "11eea4387a55b79dfc37a8a030bc416a66577d4aebd84a08971723222a01ec7a",
       "westock_content_hash": "a861d1893eb93e34271485da5744cceea51422f2d7f034c7309fd32fd94e3e1a",
@@ -176,7 +176,7 @@
     },
     "000001.SZ": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "000001.SZ",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -201,8 +201,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sz000001",
-        "date_max": "sz000001"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "2213670ef69282376201d1b7ca6c0c363f501556e6ba207e481accddaa6cc50a",
       "westock_content_hash": "e59471fd2fa223b618ad5e447cd636433ed75ecd54fb04cdf06ecbc8258f762f",
@@ -228,7 +228,7 @@
     },
     "000002.SZ": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "000002.SZ",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -253,8 +253,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sz000002",
-        "date_max": "sz000002"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "ab41a020deafb625f6ff622979509a5359b945b171d996e2948f5b99b4487cbe",
       "westock_content_hash": "ce0642a82e3e1e49119f978b9cbecc433c9e6edf748635267afe0127a9b19dde",
@@ -280,7 +280,7 @@
     },
     "000651.SZ": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "000651.SZ",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -305,8 +305,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sz000651",
-        "date_max": "sz000651"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "c85bba268691e95155ee32ce42963ef717842150f44dd55011c2c649071e9f54",
       "westock_content_hash": "13cc959ad1087c92a588363f7af72e555a8fe2a9a18f181cd896d98de9e05636",
@@ -332,7 +332,7 @@
     },
     "002415.SZ": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "002415.SZ",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -357,8 +357,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sz002415",
-        "date_max": "sz002415"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "a85f9d5d33fc4eb46453569f50df13e4e0284721943957e5cd0d1a4c81a071a7",
       "westock_content_hash": "3106674a9c8b2ea0217ceca52dd0a6362131d42f38d3857ecb372c28002d0d23",
@@ -384,7 +384,7 @@
     },
     "300750.SZ": {
       "status": "available",
-      "checked_at": "2026-08-02T18:20:04+00:00",
+      "checked_at": "2026-08-02T19:20:47+00:00",
       "symbol": "300750.SZ",
       "start_date": "2026-07-31",
       "end_date": "2026-07-31",
@@ -409,8 +409,8 @@
           "amount",
           "exchange"
         ],
-        "date_min": "sz300750",
-        "date_max": "sz300750"
+        "date_min": "2026-07-31",
+        "date_max": "2026-07-31"
       },
       "primary_content_hash": "0b127b7b5e8634d007e46db72c43e4875ff3907a5a300f9373db6e376942383a",
       "westock_content_hash": "b9d00449ae202d963dbbe1066d38b59c9ec1b433f13dad68651e52398881606c",
