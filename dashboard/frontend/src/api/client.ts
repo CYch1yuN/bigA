@@ -389,6 +389,58 @@ export interface StockTechnicalResponse extends DeepBaseResponse { data: {
   note?: string;
 } }
 
+// ---- Phase D：市场研究中心类型 ----
+
+export interface MarketOverviewResponse extends DeepBaseResponse { data: {
+  overview: {
+    score?: number; sentiment?: number; trend?: number; liquidity?: number;
+    breadth?: number; volatility?: number; risk_level?: string; summary?: string;
+    dimensions?: { trend?: number; sentiment?: number; liquidity?: number; breadth?: number; volatility?: number; risk?: number };
+  } | null;
+} }
+export interface MarketDistributionResponse extends DeepBaseResponse { data: {
+  distribution: {
+    rise_count?: number; fall_count?: number; flat_count?: number;
+    limit_up_count?: number; limit_down_count?: number; total_amount?: number;
+    bins?: { label?: string; min_percent?: number; max_percent?: number; count?: number }[];
+  } | null;
+} }
+export interface MarketHotResponse extends DeepBaseResponse { data: {
+  hot: {
+    stocks?: { rank?: number; symbol?: string; name?: string; price?: number; change_percent?: number; heat?: number; reason?: string; local_history_available?: boolean }[];
+    sectors?: { rank?: number; code?: string; name?: string; change_percent?: number; heat?: number; leader_symbol?: string; leader_name?: string; leader_local_history_available?: boolean }[];
+  } | null;
+} }
+export interface MarketSectorsResponse extends DeepBaseResponse { data: {
+  sectors: { code?: string; name?: string; sector_type?: string; change_percent?: number; amount?: number; turnover_rate?: number; rise_count?: number; fall_count?: number; leader_symbol?: string; leader_name?: string; leader_local_history_available?: boolean }[] | null;
+} }
+export interface MarketIndexesResponse extends DeepBaseResponse { data: {
+  indexes: { code?: string; name?: string; price?: number; change?: number; change_percent?: number; amount?: number; volume?: number }[] | null;
+} }
+export interface MarketConstituentsResponse extends DeepBaseResponse { data: {
+  constituents: { symbol?: string; name?: string; weight?: number; industry?: string; local_history_available?: boolean }[];
+  index_code: string;
+} }
+export interface MarketIndustryChainResponse extends DeepBaseResponse { data: {
+  chains: { code?: string; name?: string; description?: string; upstream?: ChainNode[]; midstream?: ChainNode[]; downstream?: ChainNode[] }[] | null;
+} }
+export interface ChainNode { code?: string; name?: string; node_type?: string; related_symbols?: string[]; }
+export interface MarketMacroResponse extends DeepBaseResponse { data: {
+  indicators: { code?: string; name?: string; value?: number; unit?: string; period?: string; release_date?: string; previous?: number; forecast?: number; importance?: string }[] | null;
+} }
+export interface MarketCalendarResponse extends DeepBaseResponse { data: {
+  items: { category?: string; date?: string; time?: string; title?: string; importance?: string; country?: string; actual?: number; forecast?: number; previous?: number; url?: string }[];
+  total: number;
+} }
+export interface MarketFundsResponse extends DeepBaseResponse { data: {
+  funds: { margin_balance?: number | null; margin_change?: number | null; northbound_net?: number | null; northbound_holding?: number | null; southbound_net?: number | null; date?: string | null };
+} }
+export interface MarketEventItem { category?: string; date?: string; title?: string; summary?: string; severity?: string; symbols?: string[]; url?: string; }
+export interface MarketEventsResponse extends DeepBaseResponse { data: {
+  events: MarketEventItem[];
+  total: number;
+} }
+
 export interface JobPrepareResponse {
   ok: boolean;
   job_type: JobType;
@@ -508,4 +560,25 @@ export const api = {
   },
   stocksEvents: (symbol: string) => request<StockEventsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/events`),
   stocksTechnical: (symbol: string) => request<StockTechnicalResponse>(`/api/stocks/${encodeURIComponent(symbol)}/technical`),
+  // ---- Phase D：市场研究中心（只读 Westock 缓存） ----
+  marketOverview: () => request<MarketOverviewResponse>('/api/market/overview'),
+  marketDistribution: () => request<MarketDistributionResponse>('/api/market/distribution'),
+  marketHot: () => request<MarketHotResponse>('/api/market/hot'),
+  marketSectors: () => request<MarketSectorsResponse>('/api/market/sectors'),
+  marketIndexes: () => request<MarketIndexesResponse>('/api/market/indexes'),
+  marketConstituents: (indexCode: string) => request<MarketConstituentsResponse>(`/api/market/indexes/${encodeURIComponent(indexCode)}/constituents`),
+  marketIndustryChain: () => request<MarketIndustryChainResponse>('/api/market/industry-chain'),
+  marketMacro: () => request<MarketMacroResponse>('/api/market/macro'),
+  marketCalendar: (params: { start_date?: string; end_date?: string; category?: string; importance?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.start_date) q.set('start_date', params.start_date);
+    if (params.end_date) q.set('end_date', params.end_date);
+    if (params.category) q.set('category', params.category);
+    if (params.importance) q.set('importance', params.importance);
+    q.set('limit', String(params.limit ?? 50));
+    q.set('offset', String(params.offset ?? 0));
+    return request<MarketCalendarResponse>(`/api/market/calendar?${q.toString()}`);
+  },
+  marketFunds: () => request<MarketFundsResponse>('/api/market/funds'),
+  marketEvents: () => request<MarketEventsResponse>('/api/market/events'),
 };

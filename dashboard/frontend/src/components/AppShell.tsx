@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/run-history', label: '运行记录', icon: '≡' },
   { to: '/settings', label: '系统设置', icon: '⚙' },
   { to: '/stocks', label: '股票行情', icon: 'K' },
+  { to: '/market', label: '市场研究', icon: 'M' },
   { to: '/connections/westock', label: 'Westock 连接', icon: 'W' },
 ];
 

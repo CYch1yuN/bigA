@@ -42,6 +42,7 @@ from .jobs import (
     calendar_provider_from_parquet,
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
+from .market_service import MarketService, build_market_service
 from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
@@ -132,6 +133,7 @@ def create_app(
     app.state.westock_bridge = build_westock_bridge(root)
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
+    app.state.market: MarketService = build_market_service(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -406,6 +408,85 @@ def create_app(
             return JSONResponse(app.state.stocks_deep.technical(symbol))
         except ValueError as exc:
             return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    # ---------- Phase D：市场研究中心（只读 Westock 缓存） ----------
+
+    @app.get("/api/market/overview")
+    async def market_overview(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.overview())
+
+    @app.get("/api/market/distribution")
+    async def market_distribution(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.distribution())
+
+    @app.get("/api/market/hot")
+    async def market_hot(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.hot())
+
+    @app.get("/api/market/sectors")
+    async def market_sectors(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.sectors())
+
+    @app.get("/api/market/indexes")
+    async def market_indexes(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.indexes())
+
+    @app.get("/api/market/indexes/{index_code}/constituents")
+    async def market_constituents(index_code: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.market.constituents(index_code))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_index_code", str(exc)), status_code=400)
+
+    @app.get("/api/market/industry-chain")
+    async def market_industry_chain(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.industry_chain())
+
+    @app.get("/api/market/macro")
+    async def market_macro(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.macro())
+
+    @app.get("/api/market/calendar")
+    async def market_calendar(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            start_date = request.query_params.get("start_date")
+            end_date = request.query_params.get("end_date")
+            category = request.query_params.get("category")
+            importance = request.query_params.get("importance")
+            limit_raw = request.query_params.get("limit", "50")
+            offset_raw = request.query_params.get("offset", "0")
+            limit = int(limit_raw)
+            offset = int(offset_raw)
+            if limit < 1 or limit > 500:
+                raise ValueError("limit 必须在 1~500")
+            if offset < 0:
+                raise ValueError("offset 必须 >= 0")
+        except ValueError:
+            return JSONResponse(error_body("invalid_request", "参数不合法"), status_code=400)
+        try:
+            return JSONResponse(app.state.market.calendar(
+                start_date, end_date, category, importance, limit, offset))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_calendar_params", str(exc)), status_code=400)
+
+    @app.get("/api/market/funds")
+    async def market_funds(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.funds())
+
+    @app.get("/api/market/events")
+    async def market_events(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.market.events())
 
     @app.post("/api/actions/prepare")
     async def actions_prepare(request: Request) -> JSONResponse:

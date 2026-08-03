@@ -806,3 +806,42 @@ h4 {
   text-decoration: underline;
   font-size: 12px;
 }
+
+/* ---- Phase D：市场研究中心 ---- */
+.market-chart {
+  width: 100%;
+  overflow: hidden;
+}
+.market-chart canvas {
+  display: block;
+}
+
+/* ---- Phase D：财经日历来源元数据 ---- */
+.deep-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+.deep-source-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.deep-source-block .card-meta {
+  margin-bottom: 0;
+}
+
+/* Keep dense market tables readable on narrow screens; table-wrap owns scrolling. */
+.market-macro-table {
+  min-width: 680px;
+}
+.market-calendar-table {
+  min-width: 900px;
+}
+.market-macro-table th,
+.market-calendar-table th {
+  white-space: nowrap;
+}

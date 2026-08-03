@@ -14,6 +14,7 @@ import {
 import { WestockConnectionPage } from './pages/WestockConnectionPage';
 import { StockListPage } from './pages/StockListPage';
 import { StockDetailPage } from './pages/StockDetailPage';
+import { MarketIndexesPage, MarketOverviewPage, MarketSectorsPage } from './pages/MarketPages';
 
 function ProtectedLayout() {
   const { session, loading } = useAuth();
@@ -41,6 +42,9 @@ export default function App() {
         <Route path="/connections/westock" element={<WestockConnectionPage />} />
         <Route path="/stocks" element={<StockListPage />} />
         <Route path="/stocks/:symbol" element={<StockDetailPage />} />
+        <Route path="/market" element={<MarketOverviewPage />} />
+        <Route path="/market/sectors" element={<MarketSectorsPage />} />
+        <Route path="/market/indexes" element={<MarketIndexesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
