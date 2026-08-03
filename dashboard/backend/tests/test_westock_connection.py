@@ -79,7 +79,9 @@ def test_cache_rejects_unsupported_or_unsafe_paths(tmp_path: Path, capability: s
 def test_connection_api_reads_fixed_project_cache(tmp_path: Path, config_factory):
     root = tmp_path / "repo"
     store = WestockCacheStore(root / "state/dashboard/westock")
-    store.write_export("profile", {"name": "贵州茅台"}, scope="sh600519")
+    # fetched_at 为包含 "401" 数字子串的合法时间戳：验证安全检查不误伤合法时间戳
+    store.write_export("profile", {"name": "贵州茅台"}, scope="sh600519",
+                       fetched_at="2026-08-03T10:21:22.401649+00:00")
     app = create_app(config_factory(project_root=root), enable_static=False)
     from fastapi.testclient import TestClient
     with TestClient(app, base_url="https://127.0.0.1") as client:
@@ -92,7 +94,14 @@ def test_connection_api_reads_fixed_project_cache(tmp_path: Path, config_factory
     assert body["availability"]["cache_available"] is True
     assert body["data"]["cache_available"] is True
     assert "state/dashboard" not in response.text
-    assert "401" not in response.text  # 不硬编码 401 探测结论
+    # 语义化安全检查（替代原 "401" not in text——会误伤合法时间戳中的 401 数字）：
+    # - 公开响应不得暴露 HTTP 401 探测细节（完整短语）
+    # - 检查 warnings / message 等公开错误字段
+    assert "HTTP 401" not in response.text
+    assert not any("401" in str(w) for w in body.get("warnings", []))
+    message = body.get("message")
+    if message is not None:
+        assert "401" not in str(message)
     assert any("MCP 直连授权" in w for w in body["warnings"])  # 授权状态文案保留
 
 
