@@ -11,6 +11,7 @@ import {
   RunHistoryPage,
   SettingsPage,
 } from './pages/pages';
+import { WestockConnectionPage } from './pages/WestockConnectionPage';
 
 function ProtectedLayout() {
   const { session, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/data-quality" element={<DataQualityPage />} />
         <Route path="/run-history" element={<RunHistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/connections/westock" element={<WestockConnectionPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

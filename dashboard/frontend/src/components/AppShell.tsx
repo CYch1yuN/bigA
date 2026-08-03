@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/data-quality', label: '数据质量', icon: '◉' },
   { to: '/run-history', label: '运行记录', icon: '≡' },
   { to: '/settings', label: '系统设置', icon: '⚙' },
+  { to: '/connections/westock', label: 'Westock 连接', icon: 'W' },
 ];
 
 function SecurityBanner() {

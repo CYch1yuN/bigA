@@ -41,6 +41,7 @@ from .jobs import (
     calendar_provider_from_parquet,
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
+from .westock_bridge import build_westock_bridge
 
 # 会话 Cookie 名称
 SESSION_COOKIE = "ashare_dash_session"
@@ -125,6 +126,7 @@ def create_app(
     app.state.security = security
     app.state.executor = executor
     app.state.job_manager = job_manager
+    app.state.westock_bridge = build_westock_bridge(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -251,6 +253,32 @@ def create_app(
         await _require_session(request, security, csrf_required=False)
         root = Path(cfg.project_root) if cfg.project_root else default_project_root()
         return JSONResponse(build_dashboard_snapshot(root))
+
+    @app.get("/api/connections/westock")
+    async def westock_connection(request: Request) -> JSONResponse:
+        """Return the sanitized Westock capability and cache status."""
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.westock_bridge.connection_status())
+
+    @app.post("/api/connections/westock/refresh")
+    async def westock_refresh(request: Request) -> JSONResponse:
+        """Request a safe refresh; cache-export mode reports its limitation."""
+        await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request)
+        capabilities = body.get("capabilities", [])
+        if not isinstance(capabilities, list) or any(not isinstance(item, str) for item in capabilities):
+            return JSONResponse(
+                error_body("invalid_request", "capabilities 必须是字符串数组"),
+                status_code=400,
+            )
+        try:
+            result = app.state.westock_bridge.request_refresh(capabilities)
+        except ValueError:
+            return JSONResponse(
+                error_body("invalid_capability", "请求包含未开放的 Westock 能力"),
+                status_code=400,
+            )
+        return JSONResponse(result)
 
     @app.post("/api/actions/prepare")
     async def actions_prepare(request: Request) -> JSONResponse:

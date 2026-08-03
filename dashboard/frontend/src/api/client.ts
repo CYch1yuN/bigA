@@ -132,6 +132,60 @@ export interface JobResponse {
   job: JobRecord;
 }
 
+export type WestockCapabilityStatus = 'fresh' | 'stale' | 'unavailable' | 'unsupported';
+
+export interface WestockCapability {
+  name: string;
+  tool: string;
+  ttl_seconds: number;
+  group: string;
+  read_only: boolean;
+  status: WestockCapabilityStatus;
+  cache_age_seconds: number | null;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  response_ms: number | null;
+  circuit_state: string;
+}
+
+export interface WestockConnectionStatus {
+  ok: boolean;
+  schema_version: number;
+  source: 'westock-mcp';
+  as_of: string;
+  fetched_at: string | null;
+  cache_status: WestockCapabilityStatus;
+  is_realtime: boolean;
+  transport: 'direct_mcp' | 'cache_export';
+  availability: {
+    connected: boolean;
+    direct_mcp: boolean;
+    cache_export: boolean;
+    cache_available: boolean;
+    manual_refresh: boolean;
+  };
+  data: {
+    connected: boolean;
+    cache_available: boolean;
+    capability_count: number;
+    fresh_count: number;
+    stale_count: number;
+    unavailable_count: number;
+    capabilities: WestockCapability[];
+    rate_limit: { state: string; reason?: string };
+    circuit_breaker: { state: string; reason?: string };
+  };
+  warnings: string[];
+}
+
+export interface WestockRefreshResult {
+  ok: boolean;
+  accepted: boolean;
+  transport: string;
+  requested: string[];
+  message: string;
+}
+
 export interface JobPrepareResponse {
   ok: boolean;
   job_type: JobType;
@@ -213,5 +267,11 @@ export const api = {
     request<JobResponse>('/api/jobs', {
       method: 'POST',
       body: JSON.stringify({ job_type: jobType, ...params, confirm_token: confirmToken }),
+    }),
+  westockConnection: () => request<WestockConnectionStatus>('/api/connections/westock'),
+  westockRefresh: (capabilities: string[] = []) =>
+    request<WestockRefreshResult>('/api/connections/westock/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ capabilities }),
     }),
 };
