@@ -717,3 +717,92 @@ h4 {
 .stock-list li {
   margin-bottom: 4px;
 }
+
+/* ---- Phase C：深度数据 ---- */
+.deep-sections {
+  margin-top: 16px;
+}
+.deep-tabs {
+  margin: 8px 0 12px;
+}
+.deep-status-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.deep-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  flex: 0 0 auto;      /* 不被父 flex 压缩：分类名称不得被压成逐字断行 */
+  flex-wrap: wrap;      /* 内部时间/缓存年龄/状态允许自然换行 */
+  max-width: 100%;
+}
+.deep-status-item .badge {
+  flex: none;
+  white-space: nowrap;  /* 分类名称保持整词，不逐字断行 */
+}
+.deep-status-item .card-meta {
+  min-width: 0;
+}
+.deep-status-item code {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.deep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.deep-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-bg-panel);
+}
+.card-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.deep-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed var(--color-border);
+}
+.deep-field-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.deep-fields-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.deep-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}
+.link-like {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  padding: 0 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 12px;
+}

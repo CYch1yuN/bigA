@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from .jobs import (
     calendar_provider_from_parquet,
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
+from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
 
@@ -129,6 +131,7 @@ def create_app(
     app.state.job_manager = job_manager
     app.state.westock_bridge = build_westock_bridge(root)
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
+    app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -337,6 +340,70 @@ def create_app(
         await _require_session(request, security, csrf_required=False)
         try:
             return JSONResponse(app.state.stocks_service.research(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    # ---------- Phase C：个股深度数据聚合（只读 Westock 缓存） ----------
+
+    @app.get("/api/stocks/{symbol}/fundamentals")
+    async def stocks_fundamentals(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_deep.fundamentals(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/ownership")
+    async def stocks_ownership(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_deep.ownership(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/funds")
+    async def stocks_funds(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_deep.funds(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/intel")
+    async def stocks_intel(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        # 先独立校验 symbol（不得被标记为 invalid_category）
+        if not re.fullmatch(r"^[0-9]{6}\.(SH|SZ|BJ)$", symbol):
+            return JSONResponse(error_body("invalid_symbol", "非法 symbol"), status_code=400)
+        category = request.query_params.get("category")
+        if category is not None and category not in _INTEL_CATEGORIES:
+            return JSONResponse(error_body("invalid_category", "非法 category"), status_code=400)
+        try:
+            limit_raw = request.query_params.get("limit", "20")
+            offset_raw = request.query_params.get("offset", "0")
+            limit = int(limit_raw)
+            offset = int(offset_raw)
+            if limit < 1 or limit > 50:
+                raise ValueError("limit 必须在 1~50")
+            if offset < 0:
+                raise ValueError("offset 必须 >= 0")
+        except ValueError:
+            return JSONResponse(error_body("invalid_request", "参数不合法"), status_code=400)
+        return JSONResponse(app.state.stocks_deep.intel(symbol, category, limit, offset))
+
+    @app.get("/api/stocks/{symbol}/events")
+    async def stocks_events(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_deep.events(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/technical")
+    async def stocks_technical(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_deep.technical(symbol))
         except ValueError as exc:
             return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
 

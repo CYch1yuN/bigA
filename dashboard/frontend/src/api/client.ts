@@ -329,6 +329,66 @@ export interface StockResearchResponse {
   warnings: string[];
 }
 
+// ---- Phase C：个股深度数据（Westock 缓存聚合，仅研究展示） ----
+
+export type DeepCapabilityStatus = 'fresh' | 'stale' | 'unavailable';
+
+export interface CapabilityMeta {
+  status: DeepCapabilityStatus;
+  as_of: string | null;
+  fetched_at: string | null;
+  cache_age_seconds: number | null;
+}
+
+export interface DeepBaseResponse {
+  ok: boolean;
+  schema_version: number;
+  symbol: string;
+  source: string;
+  as_of: string | null;
+  fetched_at: string | null;
+  cache_status: DeepCapabilityStatus;
+  is_realtime: boolean;
+  transport: string;
+  availability: Record<string, DeepCapabilityStatus>;
+  capability_meta: Record<string, CapabilityMeta | null>;
+  data: Record<string, unknown>;
+  warnings: string[];
+}
+
+export interface StockFundamentalsResponse extends DeepBaseResponse { data: {
+  profile: Record<string, unknown> | null;
+  financials: { summary?: Record<string, unknown>; balance_sheet?: Record<string, unknown>; income_statement?: Record<string, unknown>; cash_flow?: Record<string, unknown> } | null;
+  forecast: Record<string, unknown> | null;
+} }
+export interface StockOwnershipResponse extends DeepBaseResponse { data: {
+  shareholders: Record<string, unknown> | null;
+  dividend: Record<string, unknown> | null;
+  buyback: Record<string, unknown> | null;
+} }
+export interface StockFundsResponse extends DeepBaseResponse { data: {
+  margin: Record<string, unknown> | null;
+  block_trade: Record<string, unknown>[] | null;
+  fund_flow: Record<string, unknown> | null;
+  northbound: Record<string, unknown> | null;
+  lhb: Record<string, unknown>[] | null;
+  chip_distribution: Record<string, unknown> | null;
+} }
+export interface StockIntelItem { category: string; title?: string; summary?: string; source?: string; date?: string; url?: string; org?: string; rating?: string; target_price?: number; ann_type?: string; }
+export interface StockIntelResponse extends DeepBaseResponse { data: {
+  items: StockIntelItem[];
+  total: number;
+  [key: string]: unknown;
+} }
+export interface StockEventsResponse extends DeepBaseResponse { data: {
+  events: { date?: string; type?: string; title?: string; summary?: string; tags?: string[] }[] | null;
+  risk: { severity?: string; title?: string; description?: string }[] | null;
+} }
+export interface StockTechnicalResponse extends DeepBaseResponse { data: {
+  indicators: Record<string, unknown> | null;
+  note?: string;
+} }
+
 export interface JobPrepareResponse {
   ok: boolean;
   job_type: JobType;
@@ -435,4 +495,17 @@ export const api = {
   stocksSnapshot: (symbol: string) => request<StockSnapshotResponse>(`/api/stocks/${encodeURIComponent(symbol)}/snapshot`),
   stocksMinute: (symbol: string) => request<StockMinuteResponse>(`/api/stocks/${encodeURIComponent(symbol)}/minute`),
   stocksResearch: (symbol: string) => request<StockResearchResponse>(`/api/stocks/${encodeURIComponent(symbol)}/research`),
+  // Phase C 深度数据（只读 Westock 缓存聚合）
+  stocksFundamentals: (symbol: string) => request<StockFundamentalsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/fundamentals`),
+  stocksOwnership: (symbol: string) => request<StockOwnershipResponse>(`/api/stocks/${encodeURIComponent(symbol)}/ownership`),
+  stocksFunds: (symbol: string) => request<StockFundsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/funds`),
+  stocksIntel: (symbol: string, params: { category?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams();
+    q.set('limit', String(params.limit ?? 20));
+    q.set('offset', String(params.offset ?? 0));
+    if (params.category) q.set('category', params.category);
+    return request<StockIntelResponse>(`/api/stocks/${encodeURIComponent(symbol)}/intel?${q.toString()}`);
+  },
+  stocksEvents: (symbol: string) => request<StockEventsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/events`),
+  stocksTechnical: (symbol: string) => request<StockTechnicalResponse>(`/api/stocks/${encodeURIComponent(symbol)}/technical`),
 };

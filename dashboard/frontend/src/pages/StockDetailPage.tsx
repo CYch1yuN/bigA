@@ -4,6 +4,9 @@ import { useParams } from 'react-router-dom';
 import { api, StockRange } from '../api/client';
 import { EChartsKLine, mapTradeMarkers } from '../components/EChartsKLine';
 import { EChartsMinuteChart } from '../components/EChartsMinuteChart';
+import {
+  EventsTab, FundamentalsTab, FundsTab, IntelTab, OwnershipTab, TechnicalTab,
+} from '../components/StockDeepSections';
 import { PageHeader } from '../components/ui';
 
 const RANGES: StockRange[] = ['1m', '3m', '6m', '1y', '3y', 'all'];
@@ -13,9 +16,37 @@ const RANGE_LABEL: Record<StockRange, string> = {
 
 export function StockDetailPage() {
   const { symbol = '' } = useParams();
+  const [tab, setTab] = useState('market');
+  const DEEP_TABS = [
+    { key: 'fundamentals', label: '基本面', render: () => <FundamentalsTab symbol={symbol} /> },
+    { key: 'ownership', label: '股东回报', render: () => <OwnershipTab symbol={symbol} /> },
+    { key: 'funds', label: '资金', render: () => <FundsTab symbol={symbol} /> },
+    { key: 'intel', label: '资讯公告', render: () => <IntelTab symbol={symbol} /> },
+    { key: 'events', label: '风险事件', render: () => <EventsTab symbol={symbol} /> },
+    { key: 'technical', label: '技术指标', render: () => <TechnicalTab symbol={symbol} /> },
+  ];
+
+  return (
+    <div>
+      <PageHeader title={symbol} description="本地 curated 历史行情 · Westock 仅作缓存旁路" />
+
+      {/* 页面级 Tab：行情默认；深度 Tab 首次点击才挂载并请求 */}
+      <div className="btn-group page-tabs">
+        <button className={`btn btn-sm${tab === 'market' ? ' btn-active' : ''}`} onClick={() => setTab('market')}>行情</button>
+        {DEEP_TABS.map((t) => (
+          <button key={t.key} className={`btn btn-sm${tab === t.key ? ' btn-active' : ''}`} onClick={() => setTab(t.key)}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'market' ? <MarketTab /> : DEEP_TABS.map((t) => (tab === t.key ? <div key={t.key}>{t.render()}</div> : null))}
+    </div>
+  );
+}
+
+function MarketTab() {
+  const { symbol = '' } = useParams();
   const [adjustment, setAdjustment] = useState<'raw' | 'qfq'>('qfq');
   const [range, setRange] = useState<StockRange>('all');
-
   const history = useQuery({
     queryKey: ['stock-history', symbol, adjustment, range],
     queryFn: () => api.stocksHistory(symbol, { adjustment, range }),
@@ -36,13 +67,11 @@ export function StockDetailPage() {
     queryFn: () => api.stocksResearch(symbol),
     enabled: !!symbol,
   });
-
   const bars = useMemo(() => history.data?.data.rows ?? [], [history.data]);
   const markers = useMemo(
     () => mapTradeMarkers(bars, research.data?.data.orders ?? []),
     [bars, research.data],
   );
-
   const local = snapshot.data?.data.local;
   const westockQuote = snapshot.data?.data.westock_quote;
   const minuteAvailable = minute.data?.availability.westock_minute === true;
@@ -50,15 +79,12 @@ export function StockDetailPage() {
     ? (minute.data.data as { rows: { time: string; price: number; volume: number | null }[] }).rows
     : [];
   const historyUnavailable = history.data && history.data.data.rows.length === 0;
-
   const quoteTone = westockQuote
     ? Number(westockQuote.change_percent ?? 0) >= 0 ? 'var(--color-danger)' : 'var(--color-success)'
     : 'var(--color-text-muted)';
 
   return (
     <div>
-      <PageHeader title={symbol} description="本地 curated 历史行情 · Westock 仅作缓存旁路" />
-
       {history.isError && <div className="alert alert-error">无法读取该标的行情；本地研究主链不受影响。</div>}
 
       {historyUnavailable && (
