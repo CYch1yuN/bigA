@@ -186,6 +186,149 @@ export interface WestockRefreshResult {
   message: string;
 }
 
+// ---- Phase B 类型 ----
+
+export type StockRange = '1m' | '3m' | '6m' | '1y' | '3y' | 'all';
+
+export interface StockListItem {
+  symbol: string;
+  latest_trade_date: string;
+  bar_count: number;
+}
+
+export interface StocksListResponse {
+  ok: boolean;
+  schema_version: number;
+  source: string;
+  as_of: string;
+  fetched_at: string | null;
+  cache_status: string;
+  is_realtime: boolean;
+  transport: string;
+  availability: { curated: boolean; westock: boolean };
+  data: { total: number; offset: number; limit: number; items: StockListItem[] };
+  warnings: string[];
+}
+
+export interface StockBar {
+  date: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: number | null;
+  amount: number | null;
+}
+
+export interface StockHistoryResponse {
+  ok: boolean;
+  schema_version: number;
+  symbol: string;
+  source: string;
+  as_of: string;
+  fetched_at: string | null;
+  cache_status: string;
+  is_realtime: boolean;
+  transport: string;
+  availability: { curated: boolean; qfq: boolean };
+  adjustment: 'raw' | 'qfq';
+  range: string;
+  data: { rows: StockBar[] };
+  warnings: string[];
+  message: string;
+}
+
+export interface StockSnapshotResponse {
+  ok: boolean;
+  schema_version: number;
+  symbol: string;
+  source: string;
+  as_of: string;
+  fetched_at: string | null;
+  cache_status: string;
+  is_realtime: boolean;
+  transport: string;
+  availability: { curated: boolean; westock_quote: boolean };
+  data: {
+    local: {
+      date: string; close: string; open: string; high: string; low: string;
+      volume: number | null; amount: number | null;
+      change: string | null; change_percent: string | null;
+    } | null;
+    westock_quote: {
+      price: number;
+      change_percent: number | null;
+      time: string | null;
+      as_of: string | null;
+      fetched_at: string | null;
+      status: 'fresh' | 'stale';
+    } | null;
+  };
+  warnings: string[];
+}
+
+export interface StockMinuteResponse {
+  ok: boolean;
+  schema_version: number;
+  symbol: string;
+  source: string;
+  as_of: string | null;
+  fetched_at: string | null;
+  cache_status: string;
+  is_realtime: boolean;
+  transport: string;
+  availability: { westock_minute: boolean };
+  data: { rows: { time: string; price: number; volume: number | null }[] } | null;
+  warnings: string[];
+}
+
+export interface StockSignalItem {
+  signal_date: string | null;
+  symbol: string | null;
+  side: string;
+  quantity: number | null;
+  reason: string;
+}
+
+export interface StockOrderItem {
+  signal_date: string | null;
+  fill_date: string | null;
+  symbol: string | null;
+  side: string;
+  quantity: number | null;
+  status: string;
+  fill_price: string | null;
+  reason: string;
+}
+
+export interface StockPositionItem {
+  account_id: string;
+  symbol: string | null;
+  total_quantity: number;
+  sellable_quantity: number;
+  avg_raw_cost: string;
+}
+
+export interface StockResearchResponse {
+  ok: boolean;
+  schema_version: number;
+  symbol: string;
+  source: string;
+  as_of: string | null;
+  fetched_at: string | null;
+  cache_status: string;
+  is_realtime: boolean;
+  transport: string;
+  availability: { artifacts: boolean };
+  data: {
+    as_of: string | null;
+    signals: StockSignalItem[];
+    orders: StockOrderItem[];
+    positions: StockPositionItem[];
+  };
+  warnings: string[];
+}
+
 export interface JobPrepareResponse {
   ok: boolean;
   job_type: JobType;
@@ -274,4 +417,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ capabilities }),
     }),
+  // ---- Phase B：个股行情与策略联动（只读） ----
+  stocksList: (params: { query?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.query) q.set('query', params.query);
+    q.set('limit', String(params.limit ?? 50));
+    q.set('offset', String(params.offset ?? 0));
+    return request<StocksListResponse>(`/api/stocks?${q.toString()}`);
+  },
+  stocksHistory: (symbol: string, params: { adjustment?: 'raw' | 'qfq'; range?: StockRange; end?: string } = {}) => {
+    const q = new URLSearchParams();
+    q.set('adjustment', params.adjustment ?? 'qfq');
+    q.set('range', params.range ?? 'all');
+    if (params.end) q.set('end', params.end);
+    return request<StockHistoryResponse>(`/api/stocks/${encodeURIComponent(symbol)}/history?${q.toString()}`);
+  },
+  stocksSnapshot: (symbol: string) => request<StockSnapshotResponse>(`/api/stocks/${encodeURIComponent(symbol)}/snapshot`),
+  stocksMinute: (symbol: string) => request<StockMinuteResponse>(`/api/stocks/${encodeURIComponent(symbol)}/minute`),
+  stocksResearch: (symbol: string) => request<StockResearchResponse>(`/api/stocks/${encodeURIComponent(symbol)}/research`),
 };

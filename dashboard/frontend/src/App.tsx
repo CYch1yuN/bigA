@@ -12,6 +12,8 @@ import {
   SettingsPage,
 } from './pages/pages';
 import { WestockConnectionPage } from './pages/WestockConnectionPage';
+import { StockListPage } from './pages/StockListPage';
+import { StockDetailPage } from './pages/StockDetailPage';
 
 function ProtectedLayout() {
   const { session, loading } = useAuth();
@@ -37,6 +39,8 @@ export default function App() {
         <Route path="/run-history" element={<RunHistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/connections/westock" element={<WestockConnectionPage />} />
+        <Route path="/stocks" element={<StockListPage />} />
+        <Route path="/stocks/:symbol" element={<StockDetailPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

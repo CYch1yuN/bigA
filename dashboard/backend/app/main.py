@@ -41,6 +41,7 @@ from .jobs import (
     calendar_provider_from_parquet,
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
+from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
 
 # 会话 Cookie 名称
@@ -127,6 +128,7 @@ def create_app(
     app.state.executor = executor
     app.state.job_manager = job_manager
     app.state.westock_bridge = build_westock_bridge(root)
+    app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -279,6 +281,64 @@ def create_app(
                 status_code=400,
             )
         return JSONResponse(result)
+
+    # ---------- Phase B：个股行情与策略联动（只读） ----------
+
+    @app.get("/api/stocks")
+    async def stocks_list(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            query = request.query_params.get("query")
+            limit_raw = request.query_params.get("limit", "50")
+            offset_raw = request.query_params.get("offset", "0")
+            limit = int(limit_raw)
+            offset = int(offset_raw)
+            if limit < 1 or limit > 100:
+                raise ValueError("limit 必须在 1~100")
+            if offset < 0:
+                raise ValueError("offset 必须 >= 0")
+        except ValueError:
+            return JSONResponse(error_body("invalid_request", "参数不合法"), status_code=400)
+        return JSONResponse(app.state.stocks_service.list_stocks(query, limit, offset))
+
+    @app.get("/api/stocks/{symbol}/history")
+    async def stocks_history(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        adjustment = request.query_params.get("adjustment", "qfq")
+        range_key = request.query_params.get("range", "all")
+        end = request.query_params.get("end")
+        if adjustment not in ("raw", "qfq"):
+            return JSONResponse(error_body("invalid_request", "adjustment 必须是 raw 或 qfq"), status_code=400)
+        if range_key not in ("1m", "3m", "6m", "1y", "3y", "all"):
+            return JSONResponse(error_body("invalid_request", "非法区间"), status_code=400)
+        try:
+            return JSONResponse(app.state.stocks_service.history(symbol, adjustment, range_key, end))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/snapshot")
+    async def stocks_snapshot(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_service.snapshot(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/minute")
+    async def stocks_minute(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_service.minute(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    @app.get("/api/stocks/{symbol}/research")
+    async def stocks_research(symbol: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.stocks_service.research(symbol))
+        except ValueError as exc:
+            return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
 
     @app.post("/api/actions/prepare")
     async def actions_prepare(request: Request) -> JSONResponse:
