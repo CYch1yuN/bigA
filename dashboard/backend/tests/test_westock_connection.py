@@ -77,11 +77,17 @@ def test_cache_rejects_unsupported_or_unsafe_paths(tmp_path: Path, capability: s
 
 
 def test_connection_api_reads_fixed_project_cache(tmp_path: Path, config_factory):
+    # 【独立测试修复，不与 F2-A 混入同一提交】原硬编码 "2026-08-03T..." 过去时间戳
+    # 会随 profile 24h TTL 过期导致时间漂移（cache_available 恒 False）。改为相对当前
+    # 时间（fresh）且保留 "401" 数字子串，验证安全检查不误伤合法时间戳。
+    # 注意：now.replace(microsecond=401000) 在微秒 <401000 时会把时间往后拨造成"未来
+    # 时间戳"，故先减 5 秒再设微秒，保证 fetched_at 稳定在过去且 age 远小于 TTL。
     root = tmp_path / "repo"
     store = WestockCacheStore(root / "state/dashboard/westock")
-    # fetched_at 为包含 "401" 数字子串的合法时间戳：验证安全检查不误伤合法时间戳
+    fetched_at = (datetime.now(timezone.utc) - timedelta(seconds=5)) \
+        .replace(microsecond=401000).isoformat()
     store.write_export("profile", {"name": "贵州茅台"}, scope="sh600519",
-                       fetched_at="2026-08-03T10:21:22.401649+00:00")
+                       fetched_at=fetched_at)
     app = create_app(config_factory(project_root=root), enable_static=False)
     from fastapi.testclient import TestClient
     with TestClient(app, base_url="https://127.0.0.1") as client:
