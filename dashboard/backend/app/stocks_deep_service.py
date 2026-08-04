@@ -15,11 +15,13 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-from .stocks_service import CuratedStocksService, SYMBOL_RE, _as_finite_float
+from .stocks_service import (CuratedStocksService, SYMBOL_RE, _as_finite_float,
+                             identity_violation, westock_code_to_symbol)
 
 SCHEMA_VERSION = 1
 MAX_INTEL_LIMIT = 50
@@ -85,11 +87,11 @@ _NORTHBOUND_FIELDS = (
     ("change", ("change", "north_change", "change_shares")),
 )
 _FUND_FLOW_FIELDS = (
-    ("main", ("main", "main_net_inflow", "main_net")),
-    ("super_large", ("super_large", "super_large_net", "xl_net")),
-    ("large", ("large", "large_net")),
-    ("medium", ("medium", "medium_net")),
-    ("small", ("small", "small_net")),
+    ("main", ("main", "main_net_inflow", "main_net", "MainNetFlow")),
+    ("super_large", ("super_large", "super_large_net", "xl_net", "JumboNetFlow")),
+    ("large", ("large", "large_net", "BlockNetFlow")),
+    ("medium", ("medium", "medium_net", "MidNetFlow")),
+    ("small", ("small", "small_net", "SmallNetFlow")),
 )
 
 # ---------------------------------------------------------------------- #
@@ -170,6 +172,148 @@ def _norm_mapping(data: Any, fields: tuple[tuple[str, tuple[str, ...]], ...]) ->
         if normalized is not None:
             out[key] = normalized
     return out or None
+
+
+def _unwrap_fund_flow(data: Any) -> Any:
+    """解包 fund_flow 真实嵌套：{"sh600519": {"data": [{...}]}} → 首行 dict。
+
+    仅当外层恰有一个 sh/sz/bj 前缀键且内层含列表字段（data/list/items/records）
+    时解包取首行；其余结构原样返回，交由受控标准化判断。
+    """
+    if isinstance(data, dict) and len(data) == 1:
+        key, inner = next(iter(data.items()))
+        if isinstance(key, str) and len(key) == 8 and key[:2] in ("sh", "sz", "bj") \
+                and key[2:].isdigit() and isinstance(inner, dict):
+            for list_key in ("data", "list", "items", "records"):
+                rows = inner.get(list_key)
+                if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+                    return rows[0]
+            return inner
+    return data
+
+
+def _secucode_conflict(secu: Any, expected_symbol: str) -> str | None:
+    """SecuCode 身份校验（脱敏，不回显原始值）。
+
+    - 纯六位（600519）：与请求六位数字比较；
+    - 带市场前缀（sh600519）：经统一转换后完整比较市场（sz600519 对 600519.SH 必冲突）；
+    - 非法格式：冲突。
+    返回固定 reason 或 None（一致/缺失）。
+    """
+    if secu is None:
+        return None
+    if not isinstance(secu, str):
+        return "SecuCode 格式非法"
+    if re.fullmatch(r"[0-9]{6}", secu):
+        if secu != expected_symbol[:6]:
+            return "SecuCode 数字部分与请求标的不一致"
+        return None
+    converted = westock_code_to_symbol(secu)
+    if converted is None:
+        return "SecuCode 格式非法"
+    if converted != expected_symbol:
+        return "SecuCode 市场与请求标的不一致"
+    return None
+
+
+def _profile_identity_conflict(data: Any, expected_symbol: str) -> str | None:
+    """profile 身份冲突定位（脱敏 reason）。无冲突或非 dict 返回 None。"""
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code")
+    if code is None:
+        return None
+    if identity_violation(expected_symbol, code):
+        return "profile code 与请求标的不一致"
+    return None
+
+
+def _fund_flow_identity_conflict(data: Any, expected_symbol: str) -> str | None:
+    """fund_flow 身份冲突定位（脱敏 reason）。
+
+    仅当外层唯一键可被统一转换解析且值为 dict 时视为 wrapper：
+    - wrapper：外层代码必须与 expected 完整一致；inner.code/inner.symbol、首行 code/symbol
+      若存在必须一致；
+    其余（含 len!=1 的 dict）视为 flat：顶层 code/symbol/SecuCode 若存在必须一致，
+    不得因结构非单键而跳过身份校验；
+    不含任何身份字段的兼容 flat 数据 → 无冲突，交给受控字段标准化。
+    """
+    if isinstance(data, dict) and len(data) == 1:
+        key, inner = next(iter(data.items()))
+        key_symbol = westock_code_to_symbol(key) if isinstance(key, str) else None
+        if key_symbol is not None and isinstance(inner, dict):
+            # wrapper 形态
+            if key_symbol != expected_symbol:
+                return "外层股票代码与请求标的不一致"
+            if identity_violation(expected_symbol, inner.get("code")):
+                return "内层 code 与请求标的不一致"
+            if identity_violation(expected_symbol, inner.get("symbol")):
+                return "内层 symbol 与请求标的不一致"
+            for list_key in ("data", "list", "items", "records"):
+                rows = inner.get(list_key)
+                if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+                    first = rows[0]
+                    if identity_violation(expected_symbol, first.get("code")):
+                        return "首行 code 与请求标的不一致"
+                    if identity_violation(expected_symbol, first.get("symbol")):
+                        return "首行 symbol 与请求标的不一致"
+                    conflict = _secucode_conflict(first.get("SecuCode"), expected_symbol)
+                    if conflict:
+                        return conflict
+                    break
+            return None
+    if isinstance(data, dict):
+        # flat 形态：顶层身份字段若存在必须一致
+        if identity_violation(expected_symbol, data.get("code")):
+            return "code 与请求标的不一致"
+        if identity_violation(expected_symbol, data.get("symbol")):
+            return "symbol 与请求标的不一致"
+        conflict = _secucode_conflict(data.get("SecuCode"), expected_symbol)
+        if conflict:
+            return conflict
+    return None
+
+
+def _norm_news_identity_items(data: Any, warnings: list[str], expected_symbol: str
+                              ) -> tuple[list[dict[str, Any]] | None, str]:
+    """news 身份过滤：条目 symbol 存在且与 expected_symbol 不一致 → 丢弃该条。
+
+    返回 (items, reason)：
+    - "ok"：有合法条目输出；
+    - "identity_all_dropped"：存在合法 dict 条目且全部因 symbol 错配被丢弃（warning 已记录）；
+    - "empty"：空数组（调用方补受控 warning）；
+    - "structure"：非列表 / 全部非 dict / 无受控字段（调用方补受控 warning）。
+    非 dict 条目不计入身份错配数量。symbol 不在输出白名单，天然不进前端。
+    """
+    rows = data
+    if isinstance(data, dict):
+        rows = _pick(data, ("items", "list", "records", "data"))
+    if not isinstance(rows, list):
+        return None, "structure"
+    if not rows:
+        return None, "empty"
+    kept_rows: list[dict[str, Any]] = []
+    dropped = 0
+    non_dict = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            non_dict += 1
+            continue
+        sym = row.get("symbol")
+        if sym is not None and identity_violation(expected_symbol, sym):
+            dropped += 1
+            continue
+        kept_rows.append(row)
+    if dropped:
+        warnings.append(f"news 含身份不匹配条目，已丢弃 {dropped} 条")
+    if not kept_rows:
+        # 全非 dict → 结构错误（非身份问题）；否则为身份全丢弃
+        return (None, "structure") if non_dict else (None, "identity_all_dropped")
+    # 复用受控输出：category 稳定标签 + URL 安全过滤；symbol 不在白名单，天然不进前端
+    items = _norm_intel_items("news", kept_rows, warnings)
+    if items is None:
+        return None, "structure"
+    return items, "ok"
 
 
 def _valid_date_str(value: Any) -> str | None:
@@ -518,12 +662,21 @@ class StocksDeepService:
         }
 
     def _cap_with_norm(self, capability: str, symbol: str, normalize,
-                       warnings: list[str]) -> tuple[Any, str, dict[str, Any] | None]:
+                       warnings: list[str],
+                       identity_checker=None) -> tuple[Any, str, dict[str, Any] | None]:
         envelope, status = self._cap(capability, symbol)
         meta = self._capability_meta(capability, symbol)
         if envelope is None or status == "unavailable":
             return None, "unavailable", meta
-        normalized, reason = normalize(envelope.get("data"))
+        raw = envelope.get("data")
+        if identity_checker is not None:
+            conflict = identity_checker(raw)
+            if conflict:
+                warnings.append(
+                    f"{capability} 缓存身份校验失败（{conflict}），已降级为不可用"
+                )
+                return None, "unavailable", meta
+        normalized, reason = normalize(raw)
         if normalized is None:
             warnings.append(
                 f"{capability} 缓存结构无法标准化（{reason or '无可识别字段'}），已降级为不可用"
@@ -542,7 +695,9 @@ class StocksDeepService:
         warnings: list[str] = []
 
         profile, status, m = self._cap_with_norm(
-            "profile", symbol, lambda d: (_norm_mapping(d, _PROFILE_FIELDS), None), warnings)
+            "profile", symbol, lambda d: (_norm_mapping(d, _PROFILE_FIELDS), None),
+            warnings,
+            identity_checker=lambda d: _profile_identity_conflict(d, symbol))
         status_map["profile"] = status
         data["profile"] = profile
         meta["profile"] = m
@@ -616,7 +771,10 @@ class StocksDeepService:
         meta["block_trade"] = m
 
         fund_flow, status, m = self._cap_with_norm(
-            "fund_flow", symbol, lambda d: (_norm_mapping(d, _FUND_FLOW_FIELDS), None), warnings)
+            "fund_flow", symbol,
+            lambda d: (_norm_mapping(_unwrap_fund_flow(d), _FUND_FLOW_FIELDS), None),
+            warnings,
+            identity_checker=lambda d: _fund_flow_identity_conflict(d, symbol))
         status_map["fund_flow"] = status
         data["fund_flow"] = fund_flow
         meta["fund_flow"] = m
@@ -664,12 +822,23 @@ class StocksDeepService:
             if envelope is None or status == "unavailable":
                 data[capability] = None
                 continue
-            items = _norm_intel_items(capability, envelope.get("data"), warnings)
-            if items is None:
-                status_map[capability] = "unavailable"
-                data[capability] = None
-                warnings.append(f"{capability} 缓存结构无法标准化，已降级为不可用")
-                continue
+            if capability == "news":
+                items, reason = _norm_news_identity_items(
+                    envelope.get("data"), warnings, symbol)
+                if items is None:
+                    status_map[capability] = "unavailable"
+                    data[capability] = None
+                    if reason in ("structure", "empty"):
+                        warnings.append(f"{capability} 缓存结构无法标准化，已降级为不可用")
+                    # reason == "identity_all_dropped" 的 warning 已在函数内记录
+                    continue
+            else:
+                items = _norm_intel_items(capability, envelope.get("data"), warnings)
+                if items is None:
+                    status_map[capability] = "unavailable"
+                    data[capability] = None
+                    warnings.append(f"{capability} 缓存结构无法标准化，已降级为不可用")
+                    continue
             data[capability] = items
             merged.extend(items)
 

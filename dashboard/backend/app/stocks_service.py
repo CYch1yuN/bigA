@@ -24,6 +24,7 @@ from .westock_bridge import CAPABILITY_MAP, WestockCacheStore
 
 SCHEMA_VERSION = 1
 SYMBOL_RE = re.compile(r"^[0-9]{6}\.(SH|SZ|BJ)$")
+_WESTOCK_CODE_RE = re.compile(r"(sh|sz|bj)([0-9]{6})")
 _RANGE_TRADING_DAYS = {"1m": 21, "3m": 63, "6m": 126, "1y": 252, "3y": 756, "all": None}
 
 # 受控字段白名单：只接受明确命名的字段，未知结构一律 unavailable（不猜字段）
@@ -33,6 +34,47 @@ _MINUTE_VOLUME_FIELDS = ("volume", "vol")
 _QUOTE_PRICE_FIELDS = ("price", "last", "close")
 _QUOTE_CHG_PCT_FIELDS = ("change_percent", "chg_pct", "change_pct")
 _QUOTE_TIME_FIELDS = ("time", "date", "date_time")
+
+
+def westock_code_to_symbol(value: Any) -> str | None:
+    """Westock code → BigA symbol：sh600519 → 600519.SH。
+
+    严格：仅接受 (sh|sz|bj) 小写前缀 + 6 位数字的完整匹配；
+    不 strip、不猜测未知格式；其余（600519 / SH600519 / 带空格等）一律 None。
+    """
+    if not isinstance(value, str):
+        return None
+    m = _WESTOCK_CODE_RE.fullmatch(value)
+    if not m:
+        return None
+    return f"{m.group(2)}.{m.group(1).upper()}"
+
+
+def coerce_identity(value: Any) -> str | None:
+    """身份字段值 → 统一 BigA symbol 形式（600519.SH）用于比较。
+
+    接受 Westock code（sh600519）或 BigA symbol（600519.SH）；
+    未知格式返回 None（不猜测）。
+    """
+    if not isinstance(value, str):
+        return None
+    if SYMBOL_RE.fullmatch(value):
+        return value
+    return westock_code_to_symbol(value)
+
+
+def identity_violation(expected_symbol: str, value: Any) -> bool:
+    """身份字段冲突检测：value 存在但无法解析或解析后 != expected → True。
+
+    缺失（None）不视为冲突（是否阻断由各能力规则决定）；
+    明确提供但格式无法解析 → fail-closed 视为冲突。
+    """
+    if value is None:
+        return False
+    coerced = coerce_identity(value)
+    if coerced is None:
+        return True
+    return coerced != expected_symbol
 
 
 def _utc_now() -> datetime:
@@ -96,21 +138,78 @@ def normalize_minute(data: Any) -> tuple[list[dict[str, Any]] | None, str]:
     return out, "ok"
 
 
-def normalize_quote(data: Any) -> dict[str, Any] | None:
-    """受控标准化 quote 缓存：价格 + 可选涨跌幅 + 数据时间。未识别字段不输出。"""
-    if not isinstance(data, dict):
+_SYMBOL_PREFIX_RE = re.compile(r"^(sh|sz|bj)[0-9]{6}$")
+
+
+def _unwrap_symbol_payload(data: Any, expected_symbol: str | None = None) -> Any:
+    """解包 Westock 单键嵌套：{"sh600519": {...}} → {...}。
+
+    仅当外层 dict 恰有一个键、键匹配 sh/sz/bj 前缀格式、且值为 dict 时才解包，
+    避免误伤扁平结构或非符号键。
+
+    expected_symbol 给定时，外层唯一键必须转换后与之一致；不一致返回 None
+    （身份冲突，调用方应降级为 unavailable，绝不展示他股价格）。
+    """
+    if isinstance(data, dict) and len(data) == 1:
+        key, value = next(iter(data.items()))
+        if isinstance(key, str) and _SYMBOL_PREFIX_RE.fullmatch(key) and isinstance(value, dict):
+            key_symbol = westock_code_to_symbol(key)
+            if expected_symbol is not None and key_symbol != expected_symbol:
+                return None  # 外层唯一键与请求标的不一致
+            return value
+    return data
+
+
+def quote_identity_conflict(data: Any, expected_symbol: str) -> str | None:
+    """quote 身份冲突定位（脱敏 reason，不回显原始值）。
+
+    无冲突或纯结构问题返回 None；冲突返回固定文案（≤400 字符）。
+    """
+    payload = data
+    if isinstance(data, dict) and len(data) == 1:
+        key, inner = next(iter(data.items()))
+        if isinstance(key, str) and _SYMBOL_PREFIX_RE.fullmatch(key) and isinstance(inner, dict):
+            key_symbol = westock_code_to_symbol(key)
+            if key_symbol != expected_symbol:
+                return "外层股票代码与请求标的不一致"
+            payload = inner
+    if isinstance(payload, dict):
+        if identity_violation(expected_symbol, payload.get("code")):
+            return "code 与请求标的不一致"
+        if identity_violation(expected_symbol, payload.get("symbol")):
+            return "symbol 与请求标的不一致"
+    return None
+
+
+def normalize_quote(data: Any, expected_symbol: str | None = None) -> dict[str, Any] | None:
+    """受控标准化 quote 缓存：身份绑定 + 价格 + 可选涨跌幅 + 数据时间。
+
+    expected_symbol（如 600519.SH）给定时：
+    - 单键嵌套的外层唯一键必须转换后与 expected 一致；
+    - 内层 code/symbol（若存在）必须与 expected 一致；
+    - 任一明确身份字段冲突 → None（unavailable），绝不展示他股价格。
+    flat payload 含 code/symbol 时同样校验。未识别字段不输出。
+    """
+    payload = _unwrap_symbol_payload(data, expected_symbol)
+    if payload is None:
+        return None  # 外层唯一键与请求标的不一致
+    if not isinstance(payload, dict):
         return None
-    price = next((data[f] for f in _QUOTE_PRICE_FIELDS if f in data and data[f] is not None), None)
+    if expected_symbol is not None:
+        if identity_violation(expected_symbol, payload.get("code")) or \
+                identity_violation(expected_symbol, payload.get("symbol")):
+            return None
+    price = next((payload[f] for f in _QUOTE_PRICE_FIELDS if f in payload and payload[f] is not None), None)
     price = _as_finite_float(price)
     if price is None:
         return None
     change_percent = None
     for field in _QUOTE_CHG_PCT_FIELDS:
-        if field in data and data[field] is not None:
-            change_percent = _as_finite_float(data[field])
+        if field in payload and payload[field] is not None:
+            change_percent = _as_finite_float(payload[field])
             if change_percent is not None:
                 break
-    ts = next((data[f] for f in _QUOTE_TIME_FIELDS if f in data), None)
+    ts = next((payload[f] for f in _QUOTE_TIME_FIELDS if f in payload), None)
     return {
         "price": price,
         "change_percent": change_percent,
@@ -356,9 +455,15 @@ class CuratedStocksService:
         envelope, quote_status = self._westock_cache("quote", symbol)
         quote_info: dict[str, Any] | None = None
         if envelope is not None and quote_status in ("fresh", "stale"):
-            normalized = normalize_quote(envelope.get("data"))
+            normalized = normalize_quote(envelope.get("data"), symbol)
             if normalized is None:
-                warnings.append("Westock quote 缓存字段无法识别，已降级为不可用")
+                conflict = quote_identity_conflict(envelope.get("data"), symbol)
+                if conflict is not None:
+                    warnings.append(
+                        f"Westock quote 缓存身份校验失败（{conflict}），已降级为不可用"
+                    )
+                else:
+                    warnings.append("Westock quote 缓存字段无法识别，已降级为不可用")
             else:
                 quote_info = {
                     "price": normalized["price"],

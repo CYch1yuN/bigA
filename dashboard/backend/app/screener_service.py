@@ -34,7 +34,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .stocks_deep_service import MAX_TEXT, _norm_text
-from .stocks_service import CuratedStocksService, SYMBOL_RE, _as_finite_float, _parse_iso_ts
+from .stocks_service import (CuratedStocksService, SYMBOL_RE, _as_finite_float,
+                             _parse_iso_ts, westock_code_to_symbol)
 
 SCHEMA_VERSION = 1
 MAX_RESULTS = 500
@@ -850,7 +851,7 @@ class ScreenerService:
         universe_symbols = self._resolve_universe(query["universe"])  # invalid_universe 即抛
         rows: list[dict[str, Any]] = []
         for raw in raw_rows:
-            row = self._norm_row(raw, local_available)
+            row = self._norm_row(self._remap_westock_row(raw), local_available)
             if row is None:
                 continue
             if universe_symbols is not None and row.get("symbol") not in universe_symbols:
@@ -1033,6 +1034,44 @@ class ScreenerService:
                 if isinstance(value, list):
                     return value
         return None
+
+    @staticmethod
+    def _remap_westock_row(raw: Any) -> dict[str, Any] | None:
+        """适用于受控 Westock 选股结果行（filter/strategy/factor/label 共用）的最小字段映射：
+
+        - symbol 缺失：仅由合法 code 补（sh600519 → 600519.SH）；code 缺失/非法 → 无 symbol，后续丢弃；
+        - symbol 存在：symbol 必须严格合法；code 不存在 → 保留；
+          code 存在但非法、或合法但与 symbol 不一致 → 整行丢弃（不静默选择任一方）；
+          code 合法且一致 → 保留 symbol，移除冗余 code；
+        - ChangePCT → change_percent；ClosePrice → price（字符串数值由 _norm_row 转 float）。
+        未知字段保持原样，交由 _norm_row 白名单过滤，不猜字段。
+        """
+        if not isinstance(raw, dict):
+            return {}
+        out = dict(raw)
+        code = out.get("code")
+        symbol = out.get("symbol")
+        code_symbol = westock_code_to_symbol(code) if isinstance(code, str) else None
+
+        if symbol is None:
+            # symbol 缺失：仅由合法 code 补齐；code 缺失/非法 → 保持无 symbol（_norm_row 丢弃）
+            if code_symbol is not None:
+                out["symbol"] = code_symbol
+                out.pop("code", None)
+        else:
+            # symbol 存在：symbol 必须严格合法
+            if not isinstance(symbol, str) or not SYMBOL_RE.fullmatch(symbol):
+                return None
+            if "code" in out:
+                # code 存在即必须有效且与 symbol 一致，否则整行丢弃
+                if code_symbol is None or code_symbol != symbol:
+                    return None
+                out.pop("code", None)
+
+        for src, dst in (("ChangePCT", "change_percent"), ("ClosePrice", "price")):
+            if src in out and dst not in out:
+                out[dst] = out.pop(src)
+        return out
 
     def _norm_row(self, raw: Any, local_available: set[str]) -> dict[str, Any] | None:
         if not isinstance(raw, dict):
