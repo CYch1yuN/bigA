@@ -374,15 +374,34 @@ export interface StockFundsResponse extends DeepBaseResponse { data: {
   lhb: Record<string, unknown>[] | null;
   chip_distribution: Record<string, unknown> | null;
 } }
-export interface StockIntelItem { category: string; title?: string; summary?: string; source?: string; date?: string; url?: string; org?: string; rating?: string; target_price?: number; ann_type?: string; }
+export interface StockIntelItem {
+  category: string;
+  title?: string;
+  summary?: string;
+  source?: string;
+  date?: string;
+  url?: string;
+  org?: string;
+  rating?: string;
+  target_price?: number;
+  ann_type?: string;
+  /** reports/announcements：完整 datetime，不截断 */
+  time?: string;
+  /** announcements：更新时间 */
+  update_time?: string;
+  /** announcements：公告类型 */
+  type?: string;
+  /** reports：券商机构名 */
+  institution?: string;
+}
 export interface StockIntelResponse extends DeepBaseResponse { data: {
   items: StockIntelItem[];
   total: number;
   [key: string]: unknown;
 } }
 export interface StockEventsResponse extends DeepBaseResponse { data: {
-  events: { date?: string; type?: string; title?: string; summary?: string; tags?: string[] }[] | null;
-  risk: { severity?: string; title?: string; description?: string }[] | null;
+  events: { category?: string; date?: string; title?: string }[] | null;
+  risk: Record<string, unknown> | null;
 } }
 export interface StockTechnicalResponse extends DeepBaseResponse { data: {
   indicators: Record<string, unknown> | null;

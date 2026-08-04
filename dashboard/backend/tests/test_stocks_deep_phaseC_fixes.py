@@ -165,8 +165,9 @@ def test_shareholder_and_chip_limits(tmp_path, config_factory):
                      "top10FloatShareholders": []},
     })
     _write_cache(root, "chip_distribution", "600519.SH", {
-        "concentration": 0.5,
-        "distribution": [{"price": i, "ratio": i} for i in range(60)],
+        "sh600519": {"code": "sh600519", "name": "贵州茅台", "date": "2026-07-31",
+                     "closePrice": 10.0, "chipProfitRate": 50.0, "chipAvgCost": 9.5,
+                     "chipConcentration90": 5.0, "chipConcentration70": 3.0},
     })
     app = _make_app(root, config_factory)
     own = _auth_get(app, "/api/stocks/600519.SH/ownership").json()
@@ -174,8 +175,9 @@ def test_shareholder_and_chip_limits(tmp_path, config_factory):
     assert any("裁剪" in w for w in own["warnings"])
     funds = _auth_get(app, "/api/stocks/600519.SH/funds").json()
     chip = funds["data"]["chip_distribution"]
-    assert len(chip["distribution"]) == 50  # 上限 50
-    assert any("裁剪" in w for w in funds["warnings"])
+    assert chip["concentration_90"] == 5.0  # 标量对象 schema
+    assert "distribution" not in chip  # 不输出伪造分布数组
+    assert "price" not in chip
 
 
 # ---------------------------------------------------------------------- #
@@ -225,9 +227,10 @@ def test_intel_stable_sort_invalid_date_last(tmp_path, config_factory):
         {"title": "无日期", "date": "not-a-date"},
         {"title": "新闻", "date": "2026-07-31"},
     ])
-    _write_cache(root, "reports", "600519.SH", [
-        {"title": "研报同日", "date": "2026-07-31"},
-    ])
+    _write_cache(root, "reports", "600519.SH", {
+        "total_num": 1, "total_page": 1, "data": [
+            {"id": "r1", "title": "研报同日", "time": "2026-07-31 09:00:00",
+             "type": "1", "symbol": "sh600519", "symbols": ["sh600519"], "tzpj": "买入"}]})
     app = _make_app(root, config_factory)
     items = _auth_get(app, "/api/stocks/600519.SH/intel?limit=50&offset=0").json()["data"]["items"]
     titles = [i["title"] for i in items]

@@ -21,8 +21,9 @@ from app.westock_bridge import CAPABILITY_MAP
 
 def _write_cache(root: Path, capability: str, symbol: str, data, *,
                  fetched_at: str | None = None, tool: str | None = None,
-                 corrupt: bool = False) -> Path:
-    path = root / "state" / "dashboard" / "westock" / capability / f"{symbol}.json"
+                 corrupt: bool = False, scope: str | None = None) -> Path:
+    scope = scope or symbol
+    path = root / "state" / "dashboard" / "westock" / capability / f"{scope}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     if corrupt:
         path.write_text("{ 损坏", encoding="utf-8")
@@ -31,7 +32,7 @@ def _write_cache(root: Path, capability: str, symbol: str, data, *,
         "schema_version": 1,
         "capability": capability,
         "tool": tool or CAPABILITY_MAP[capability].tool,  # 使用注册表真实 tool 名
-        "scope": symbol,
+        "scope": scope,
         "source": "westock-mcp",
         "transport": "cache_export",
         "as_of": "2026-07-31",
@@ -98,25 +99,60 @@ def _seed_full(root: Path, symbol: str = "600519.SH", *, age_hours: float | None
                                 "totalCashDiviComRMB": "1.5e10",
                                 "bonusShareRatio": "", "tranAddShareRatio": ""}]},
         "buyback": {"status": "进行中", "price_range": "1500-1800", "amount": 1.5e10},
-        "margin": {"margin_balance": 1.2e10, "margin_change": 5e7,
-                   "short_balance": 3e8, "short_change": -1e7},
-        "block_trade": [{"date": "2026-07-30", "price": 1350.0, "shares": 100000,
-                         "amount": 1.35e8, "discount": -0.5}],
+        "margin": {"sh600519": {"code": "sh600519", "name": "贵州茅台", "date": "2026-07-31",
+                                "closePrice": 1358.98, "changePct": 0.0,
+                                "FinanceValue": "1.2e10", "FinanceBuyValue": "5e7",
+                                "FinanceRefundValue": "4e7", "SecurityValue": "3e8",
+                                "SecurityValueDOD": "-1.0", "TradingValue": "1.23e10",
+                                "TradingValueDif": "1.17e10", "FinanceValueDOD": "0.4"}},
+        "block_trade": {"sh600519": {"code": "sh600519", "name": "贵州茅台",
+                                     "date": "2026-07-30", "closePrice": 1358.98,
+                                     "changePct": 0.0,
+                                     "blockTradingInfos": [
+                                         {"SerialNumber": 1, "TradingType": "协议交易",
+                                          "TurnoverPrice": "1350.00", "TurnoverValue": "1.35e8",
+                                          "CloseDiscountRate": "-0.5",
+                                          "BuySalesDepartment": "机构专用",
+                                          "SellSalesDepartment": "机构专用"}]}},
         "fund_flow": {"main": -2.1e8, "super_large": -1.5e8, "large": -6e7,
                       "medium": 4e7, "small": 1.7e8},
-        "northbound": {"holding_shares": 8.5e7, "holding_ratio": 6.8, "change": -2e6},
-        "lhb": [{"date": "2026-07-29", "reason": "日涨幅偏离值达7%", "seat": "机构专用",
-                 "net_buy": 3.2e8, "buy": 5e8, "sell": 1.8e8}],
-        "chip_distribution": {"concentration": 0.62,
-                              "distribution": [{"price": 1300, "ratio": 10.0}]},
+        "northbound": {"code": "sh600519",
+                       "cur": {"date": "2026-07-31", "info": {"Type": "cur"},
+                               "stock": {"code": "sh600519", "name": "贵州茅台",
+                                         "EndDate": 20260731, "HoldingCap": 1.2e11,
+                                         "HoldingRatio": 6.8, "HoldingShares": 8.5e7,
+                                         "SharesChgQ": -2e6, "SharesChgY": -1e7,
+                                         "CapChgQ": -1e9, "CapChgY": -2e10}},
+                       "prev": {"date": "2026-07-31", "info": {"Type": "prev"},
+                                "stock": {"code": "sh600519", "name": "贵州茅台",
+                                          "EndDate": 20260331, "HoldingCap": 1.3e11,
+                                          "HoldingRatio": 6.9, "HoldingShares": 8.7e7,
+                                          "SharesChgQ": 3e5, "SharesChgY": -5e6,
+                                          "CapChgQ": 2e8, "CapChgY": -1.5e10}}},
+        "chip_distribution": {"sh600519": {"code": "sh600519", "name": "贵州茅台",
+                                           "date": "2026-07-31", "closePrice": 1358.98,
+                                           "chipProfitRate": 62.0, "chipAvgCost": 1300.5,
+                                           "chipConcentration90": 10.88,
+                                           "chipConcentration70": 6.7}},
         "news": [{"title": "茅台发布半年报", "summary": "营收增长15%", "source": "上证报",
                   "date": "2026-08-01", "url": "https://example.com/news/1"}],
-        "reports": [{"title": "维持买入评级", "org": "中信证券", "rating": "买入",
-                     "target_price": 2200.0, "date": "2026-07-31"}],
-        "announcements": [{"title": "2026年中期分红公告", "ann_type": "分红", "date": "2026-07-30"}],
-        "events": [{"date": "2026-08-20", "type": "解禁", "title": "限售股解禁",
-                    "summary": "占总股本0.5%", "tags": ["解禁"]}],
-        "risk": [{"severity": "中", "title": "白酒需求波动", "description": "行业景气度下行"}],
+        "reports": {"total_num": 1, "total_page": 1, "data": [
+            {"id": "r1", "title": "【中信证券】维持买入评级", "time": "2026-07-31 09:00:00",
+             "type": "1", "symbol": "sh600519", "symbols": ["sh600519"], "tzpj": "买入"}]},
+        "announcements": {"total_num": 1, "total_page": 1, "data": [
+            {"id": "a1", "symbol": "sh600519", "title": "2026年中期分红公告",
+             "time": "2026-07-30 10:00:00", "type": "1", "url": "",
+             "newstype": "0101", "update_time": "2026-07-30 10:05:00", "Ftranslate": "0"}]},
+        "events": {"date": "2026-07-31", "stocks": [
+            {"code": "sh600519", "name": "贵州茅台", "tagDescs": ["解禁"], "tagIds": [1]}]},
+        "risk": {"sh600519": {"code": "sh600519", "date": "2026-07-31", "name": "贵州茅台",
+                              "bondRating": [], "executiveTransfer": [], "lawsuit": [
+                                  {"title": "白酒需求波动", "summary": "行业景气度下行",
+                                   "level": "中", "date": "2026-07-31"}],
+                              "leaderChange": [], "seasonedIssue": [], "unlock": [],
+                              "pledge": {"date": "", "floatPledgedVolume": 0,
+                                         "nonFloatPledgedVolume": 0, "pledgeNum": 0,
+                                         "pledgeRatio": 0.0, "totalPledge": 0}}},
         "technical": {"sh600519": {
             "code": "sh600519", "name": "贵州茅台", "date": "2026-07-31", "closePrice": 1360.0,
             "ma": {"MA_5": 1360.0, "MA_10": 1350.0, "MA_20": 1340.0, "MA_60": 1300.0},
@@ -128,6 +164,13 @@ def _seed_full(root: Path, symbol: str = "600519.SH", *, age_hours: float | None
     }
     for capability, data in caches.items():
         _write_cache(root, capability, symbol, data, fetched_at=fetched)
+    # lhb 缓存 scope 固定 global（不为个股复制缓存）
+    _write_cache(root, "lhb", symbol, {
+        "date": "2026-07-29",
+        "jg": [{"code": "sh600519", "name": "贵州茅台", "tdDays": 1,
+                "instBuyBranchCount": 3, "instBuyAmt": 3.2e8, "instBuyRate": 10.0,
+                "totalBuyAmt": 5e8, "netBuyAmt": 3.2e8, "netBuyRate": 6.0, "rank": 1}],
+    }, fetched_at=fetched, scope="global")
 
 
 # ---------------------------------------------------------------------- #
@@ -217,13 +260,15 @@ def test_funds_aggregates_six_capabilities(tmp_path, config_factory):
     app = _make_app(root, config_factory)
     body = _auth_get(app, "/api/stocks/600519.SH/funds").json()
     assert body["cache_status"] == "fresh"
-    assert body["data"]["margin"]["margin_balance"] == 1.2e10
+    assert body["data"]["margin"]["margin_balance"] == 1.23e10  # TradingValue 合计
     assert "net_buy" not in body["data"]["block_trade"][0]  # 非受控字段不输出
     assert body["data"]["block_trade"][0]["amount"] == 1.35e8
     assert body["data"]["fund_flow"]["main"] == -2.1e8
-    assert body["data"]["northbound"]["holding_ratio"] == 6.8
-    assert body["data"]["lhb"][0]["net_buy"] == 3.2e8
-    assert body["data"]["chip_distribution"]["concentration"] == 0.62
+    assert body["data"]["northbound"]["current"]["holding_ratio"] == 6.8
+    assert body["data"]["northbound"]["previous"]["holding_shares"] == 8.7e7
+    assert body["data"]["lhb"][0]["category"] == "jg"  # lhb 五分类过滤后
+    assert body["data"]["lhb"][0]["net_buy_amount"] == 3.2e8
+    assert body["data"]["chip_distribution"]["concentration_90"] == 10.88
 
 
 def test_intel_pagination_category_and_url_filter(tmp_path, config_factory):
@@ -259,9 +304,11 @@ def test_events_includes_risk_source_warning(tmp_path, config_factory):
     _seed_full(root)
     app = _make_app(root, config_factory)
     body = _auth_get(app, "/api/stocks/600519.SH/events").json()
-    assert body["data"]["events"][0]["tags"] == ["解禁"]
-    assert body["data"]["risk"][0]["severity"] == "中"
-    assert any("不替代人工判断" in w for w in body["warnings"])
+    assert body["data"]["events"][0]["title"] == "解禁"
+    assert body["data"]["events"][0]["date"] == "2026-07-31"
+    assert body["data"]["risk"]["lawsuits"][0]["title"] == "白酒需求波动"
+    assert body["data"]["risk"]["lawsuits"][0]["level"] == "中"
+    assert any("不替代人工核实" in w for w in body["warnings"])
 
 
 def test_technical_controlled_indicators_and_note(tmp_path, config_factory):
@@ -318,7 +365,7 @@ def test_corrupt_cache_fails_open(tmp_path, config_factory):
 def test_unknown_schema_degrades_with_warning(tmp_path, config_factory):
     root = tmp_path / "repo"
     _seed_full(root)
-    _write_cache(root, "lhb", "600519.SH", [{"odd_field": 1}])  # 缺受控字段
+    _write_cache(root, "lhb", "600519.SH", [{"odd_field": 1}], scope="global")  # 覆盖 global 为未知结构
     app = _make_app(root, config_factory)
     body = _auth_get(app, "/api/stocks/600519.SH/funds").json()
     assert body["availability"]["lhb"] == "unavailable"

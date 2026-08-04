@@ -318,6 +318,51 @@ def _norm_news_identity_items(data: Any, warnings: list[str], expected_symbol: s
     return items, "ok"
 
 
+def _normalize_business_date(value: Any) -> str | None:
+    """严格业务日期（F2-C 第三轮）：接受 YYYY-MM-DD / 字符串 YYYYMMDD / 整数 YYYYMMDD → YYYY-MM-DD。
+
+    - bool 拒绝（bool 是 int 子类，必须先判）
+    - 不 strip：前后空格、prefix/suffix、任何非全量格式一律拒绝
+    - strptime 完整验证（2026-13-40 / 20260230 / 2026-02-31 等非法日期 → None）
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        text = str(value)
+        if len(text) != 8:
+            return None
+    elif isinstance(value, str):
+        text = value
+    else:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        fmt = "%Y-%m-%d"
+    elif re.fullmatch(r"\d{8}", text):
+        fmt = "%Y%m%d"
+    else:
+        return None
+    try:
+        return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _business_date_of(value: Any) -> str | None:
+    """从纯业务日期或完整 datetime（标准化输出格式）提取合法业务日期。
+
+    仅用于标准化结果派生（as_of / 辅助 date 字段 / 排序键）；
+    原始输入一律走严格的 `_normalize_business_date`。
+    """
+    d = _normalize_business_date(value)
+    if d is not None:
+        return d
+    if isinstance(value, str):
+        m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})[ T].*", value)
+        if m:
+            return _normalize_business_date(m.group(1))
+    return None
+
+
 def _valid_date_str(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -644,36 +689,404 @@ def _norm_forecast(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[st
     return out, None
 
 
-def _norm_chip(data: Any, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+# ---------------------------------------------------------------------- #
+# F2-C：funds 组校准（margin/block_trade/northbound/lhb/chip_distribution）
+# ---------------------------------------------------------------------- #
+_LHB_CATEGORIES = ("jg", "yzb", "yyb", "gslmr", "gslxw")
+_LHB_RAW_SCAN_LIMIT = 1000
+_LHB_OUTPUT_LIMIT = 200
+_MARGIN_MAX_ROWS = 250
+_NORTHBOUND_UNIT_NOTE = (
+    "北向单位依据上游 schema 声明（市值元/持股股/比例%），尚未独立验证，未执行换算。"
+)
+
+
+def _norm_margin(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """margin 真实结构校准（F2-C）。
+
+    wrapper 单键 + 单记录标量（FinanceValue 等，字符串数值）；date 严格 YYYY-MM-DD。
+    仅保留真实存在且受控的字段；TradingValue=融资+融券余额合计 → margin_balance。
+    """
+    payload = unwrap_strict_westock_payload(data, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    raw_date = payload.get("date")
+    date = _normalize_business_date(raw_date)
+    if date is None:
+        return None, "日期非法"
+    out: dict[str, Any] = {"date": date}
+    for src, dst in (("FinanceValue", "financing_balance"),
+                     ("FinanceBuyValue", "financing_buy"),
+                     ("FinanceRefundValue", "financing_repay"),
+                     ("SecurityValue", "securities_lending_balance"),
+                     ("TradingValue", "margin_balance")):
+        num = _norm_fin_num(payload.get(src))
+        if num is not None:
+            out[dst] = num
+    if len(out) == 1:
+        return None, "缺少受控两融字段"
+    return out, None
+
+
+def _norm_block_trade_row(item: Any, date: str) -> dict[str, Any] | None:
+    """block_trade 行：price>0、amount>=0 必选；discount_rate/buyer/seller 可选。
+    shares 真实响应无来源 → 不计算、不输出。"""
+    if not isinstance(item, dict):
+        return None
+    price = _norm_fin_num(item.get("TurnoverPrice"))
+    amount = _norm_fin_num(item.get("TurnoverValue"))
+    if price is None or price <= 0 or amount is None or amount < 0:
+        return None
+    out: dict[str, Any] = {"date": date, "price": price, "amount": amount}
+    discount = _norm_fin_num(item.get("CloseDiscountRate"))
+    if discount is not None:
+        out["discount_rate"] = discount
+    buyer = _norm_text(item.get("BuySalesDepartment"), 200)
+    seller = _norm_text(item.get("SellSalesDepartment"), 200)
+    if buyer:
+        out["buyer"] = buyer
+    if seller:
+        out["seller"] = seller
+    return out
+
+
+def _norm_block_trade(data: Any, symbol: str, warnings: list[str]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """block_trade 真实结构校准（F2-C）：wrapper + blockTradingInfos 列表。"""
+    payload = unwrap_strict_westock_payload(data, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    date = _normalize_business_date(payload.get("date"))
+    if date is None:
+        return None, "日期非法"
+    rows = payload.get("blockTradingInfos")
+    if not isinstance(rows, list):
+        return None, "非列表"
+    limit = _MAX_ITEMS["block_trade"]
+    if len(rows) > limit:
+        warnings.append(f"block_trade 超过 {limit} 条上限，已裁剪")
+        rows = rows[: limit]
+    out: list[dict[str, Any]] = []
+    invalid = duplicates = 0
+    by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    order: list[tuple[Any, ...]] = []
+    for item in rows:
+        norm = _norm_block_trade_row(item, date)
+        if norm is None:
+            invalid += 1
+            continue
+        key = (norm["date"], norm.get("price"), norm.get("buyer"), norm.get("seller"))
+        if key in by_key:
+            duplicates += 1
+        else:
+            order.append(key)
+        by_key[key] = norm  # 同日+price+buyer+seller 保留最后有效条目
+    if invalid:
+        warnings.append(f"block_trade 含 {invalid} 行非法记录，已丢弃")
+    if duplicates:
+        warnings.append(f"block_trade 含 {duplicates} 条重复记录，保留最后有效值")
+    out = [by_key[k] for k in order]
+    out.sort(key=lambda r: r["date"], reverse=True)  # 日期倒序
+    if not out:
+        return None, "缺少受控大宗交易字段"
+    return out, None
+
+
+def _norm_northbound_block(block: Any) -> dict[str, Any] | None:
+    """northbound cur/prev 单季度块：stock.EndDate（int YYYYMMDD）→ date。"""
+    if not isinstance(block, dict):
+        return None
+    stock = block.get("stock")
+    if not isinstance(stock, dict):
+        return None
+    end = stock.get("EndDate")
+    date = _parse_yyyymmdd(str(end)) if isinstance(end, (int, str)) else None
+    if date is None:
+        return None
+    out: dict[str, Any] = {"date": date}
+    for src, dst in (("HoldingShares", "holding_shares"), ("HoldingRatio", "holding_ratio"),
+                     ("HoldingCap", "holding_cap"), ("SharesChgQ", "shares_change_q"),
+                     ("SharesChgY", "shares_change_y"), ("CapChgQ", "cap_change_q"),
+                     ("CapChgY", "cap_change_y")):
+        num = _norm_fin_num(stock.get(src))
+        if num is not None:
+            out[dst] = num
+    return out if len(out) > 1 else None
+
+
+def _norm_northbound(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """northbound 真实结构校准（F2-C）。
+
+    顶层 code 必须存在一致；cur/prev → current/previous；单侧存在允许降级并 warning；
+    禁止将北向字段误标为南向；单位声明仅来源说明。
+    """
     if not isinstance(data, dict):
         return None, "非对象"
-    concentration = _pick(data, ("concentration", "chip_concentration", "concentration_ratio"))
-    out: dict[str, Any] = {}
-    if concentration is not None:
-        number = _as_finite_float(concentration)
-        if number is not None:
-            out["concentration"] = number
-    dist_raw = _pick(data, ("distribution", "chip_distribution", "price_distribution"))
-    if isinstance(dist_raw, list):
-        points: list[dict[str, Any]] = []
-        for point in dist_raw:
-            if not isinstance(point, dict):
+    code = data.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    current = _norm_northbound_block(data.get("cur"))
+    previous = _norm_northbound_block(data.get("prev"))
+    if current is None and previous is None:
+        return None, "缺少受控北向字段"
+    out: dict[str, Any] = {"unit_note": _NORTHBOUND_UNIT_NOTE}
+    if current is not None:
+        out["current"] = current
+    if previous is not None:
+        out["previous"] = previous
+    elif current is not None:
+        warnings.append("northbound 次新季度缺失，仅展示最新季度")
+    return out, None
+
+
+def _lhb_identity(row: Any) -> tuple[set[str] | None, bool]:
+    """lhb 行身份解析（F2-C 定点修正）：返回 (symbols, unrecognized)。
+
+    - symbols=None 且 unrecognized=False：行无任何身份来源 → 不得归入任何个股（按不可识别计数）
+    - symbols 非空但 unrecognized=True：身份存在但无法完整确认（分号含非法 token / 嵌套非法）
+      → 视为身份不可确认，整行丢弃（不允许"一个合法 token + 一个非法 token"通过）
+    - 其余：symbols 为完整解析的成员集合
+    """
+    if not isinstance(row, dict):
+        return None, True
+    symbols: set[str] = set()
+    had_source = False
+    unrecognized = False
+    raw = row.get("code")
+    if isinstance(raw, str) and raw.strip():
+        had_source = True
+        for tok in raw.split(";"):
+            if not tok:
+                continue  # 分号空段跳过
+            # 不 strip：token 必须严格完整格式（带前后空白的 token 视为非法 → 身份不可确认）
+            s = westock_code_to_symbol(tok)
+            if s is None:
+                unrecognized = True  # 分号 token 非法 → 身份不可确认
+            else:
+                symbols.add(s)
+    for key in ("stockList", "buyStock", "sellStock"):
+        items = row.get(key)
+        if not isinstance(items, list):
+            continue
+        had_source = True
+        for it in items:
+            if not isinstance(it, dict):
+                unrecognized = True
                 continue
-            normalized: dict[str, Any] = {}
-            for field in _CHIP_DIST_FIELDS:
-                if field in point and point[field] is not None:
-                    number = _as_finite_float(point[field])
-                    if number is not None:
-                        normalized[field] = number
-            if normalized:
-                points.append(normalized)
-            if len(points) >= MAX_CHIP_POINTS:
-                break
-        if len(dist_raw) > MAX_CHIP_POINTS:
-            warnings.append(f"筹码分布点超过 {MAX_CHIP_POINTS} 条上限，已裁剪")
-        if points:
-            out["distribution"] = points
-    if not out:
+            s = westock_code_to_symbol(it.get("code"))
+            if s is None:
+                unrecognized = True
+            else:
+                symbols.add(s)
+    if not had_source:
+        return None, False  # 无身份来源
+    return symbols, unrecognized
+
+
+def _norm_lhb_row(cat: str, row: Any, date: str) -> dict[str, Any] | None:
+    """lhb 各分类受控行 schema；任意嵌套对象不透传。"""
+    if not isinstance(row, dict):
+        return None
+    base = {"category": cat, "date": date}
+    if cat == "jg":
+        out = dict(base)
+        for src, dst in (("tdDays", "td_days"), ("instBuyBranchCount", "inst_buy_branches"),
+                         ("instBuyAmt", "inst_buy_amount"), ("instBuyRate", "inst_buy_rate"),
+                         ("totalBuyAmt", "total_buy_amount"), ("netBuyAmt", "net_buy_amount"),
+                         ("netBuyRate", "net_buy_rate"), ("rank", "rank")):
+            num = _norm_fin_num(row.get(src))
+            if num is not None:
+                out[dst] = num
+        return out if len(out) > 2 else None
+    if cat == "yzb":
+        name = _norm_text(row.get("name"), 200)
+        if not name:
+            return None
+        out = dict(base)
+        out["name"] = name
+        net = _norm_fin_num(row.get("netAmt"))
+        if net is not None:
+            out["net_amount"] = net
+        for key, dst in (("buyStock", "buy_stocks"), ("sellStock", "sell_stocks")):
+            items = row.get(key)
+            if isinstance(items, list):
+                lst: list[dict[str, str]] = []
+                for it in items:
+                    if isinstance(it, dict):
+                        s = westock_code_to_symbol(it.get("code"))
+                        nm = _norm_text(it.get("name"), 200) or ""
+                        if s:
+                            lst.append({"symbol": s, "name": nm})
+                if lst:
+                    out[dst] = lst
+        return out
+    if cat == "yyb":
+        name = _norm_text(row.get("name"), 200)
+        if not name:
+            return None
+        out = dict(base)
+        out["name"] = name
+        amt = _norm_fin_num(row.get("buyAmt"))
+        if amt is not None:
+            out["buy_amount"] = amt
+        syms, _ = _lhb_identity(row)
+        if syms:
+            out["symbols"] = sorted(syms)
+        return out
+    if cat == "gslmr":
+        out = dict(base)
+        for src, dst in (("tdDays", "td_days"), ("netAmt", "net_amount"), ("upRate", "up_rate"),
+                         ("bAmt", "buy_amount"), ("sAmt", "sell_amount"), ("exc", "exchange_rate"),
+                         ("winNum", "win_count")):
+            num = _norm_fin_num(row.get(src))
+            if num is not None:
+                out[dst] = num
+        branches = row.get("branchList")
+        if isinstance(branches, list):
+            names: list[str] = []
+            for b in branches:
+                if isinstance(b, dict):
+                    nm = _norm_text(b.get("name"), 200)
+                    if nm:
+                        names.append(nm)
+            if names:
+                out["branches"] = names
+        return out if len(out) > 2 else None
+    if cat == "gslxw":
+        name = _norm_text(row.get("name"), 200)
+        if not name:
+            return None
+        out = dict(base)
+        out["name"] = name
+        net = _norm_fin_num(row.get("netAmt"))
+        if net is not None:
+            out["net_amount"] = net
+        wr = _norm_fin_num(row.get("winRate"))
+        if wr is not None:
+            out["win_rate"] = wr
+        syms, _ = _lhb_identity(row)
+        if syms:
+            out["symbols"] = sorted(syms)
+        return out
+    return None
+
+
+def _lhb_dedupe_key(norm: dict[str, Any]) -> tuple[Any, ...]:
+    """lhb 行去重键：category + 分类内稳定业务字段（受控字段，不做任意对象遍历）。"""
+    cat = norm.get("category")
+    if cat == "jg":
+        return (norm.get("rank"), norm.get("net_buy_amount"))
+    if cat in ("yzb", "yyb", "gslxw"):
+        return (norm.get("name"),)
+    if cat == "gslmr":
+        return (norm.get("net_amount"),)
+    return (str(norm.get("date")),)
+
+
+def _lhb_stable_sort(norm: dict[str, Any]) -> tuple[Any, ...]:
+    """lhb 分类内稳定业务字段排序（先日期倒序，再分类序，再本字段）。"""
+    cat = norm.get("category")
+    if cat == "jg":
+        rank = norm.get("rank")
+        return (rank if isinstance(rank, (int, float)) else 0,)
+    if cat in ("yzb", "yyb", "gslxw"):
+        return (str(norm.get("name") or ""),)
+    if cat == "gslmr":
+        amt = norm.get("net_amount")
+        return (amt if isinstance(amt, (int, float)) else 0,)
+    return ("",)
+
+
+def _norm_lhb(data: Any, symbol: str, warnings: list[str]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """lhb 真实结构校准（F2-C 定点修正）。
+
+    流程：原始扫描限制（每分类 ≤1000）→ 身份解析（分号 token 全严格）→ 个股过滤
+    → 标准化 → 去重（保留最后）→ 稳定排序（date 倒序 + 固定分类序 + 分类内业务字段）
+    → 输出 200 条裁剪。
+    分别统计 scanned / identity_unrecognized / other_symbol / invalid_business_row /
+    duplicate / truncated；warning 固定脱敏，不泄露原始 code。
+    """
+    if not isinstance(data, dict):
+        return None, "非对象"
+    date = _normalize_business_date(data.get("date"))
+    if date is None:
+        return None, "日期非法"
+    cat_order = {c: i for i, c in enumerate(_LHB_CATEGORIES)}
+    seen: dict[tuple[Any, ...], dict[str, Any]] = {}
+    scanned = identity_unrecognized = other_symbol = invalid_business = duplicate = 0
+    for cat in _LHB_CATEGORIES:
+        rows = data.get(cat)
+        if not isinstance(rows, list):
+            continue
+        if len(rows) > _LHB_RAW_SCAN_LIMIT:
+            warnings.append(f"lhb {cat} 原始扫描超过 {_LHB_RAW_SCAN_LIMIT} 条上限，已裁剪")
+            rows = rows[: _LHB_RAW_SCAN_LIMIT]
+        scanned += len(rows)
+        for row in rows:
+            members, unrecognized = _lhb_identity(row)
+            if members is None or unrecognized:
+                identity_unrecognized += 1  # 无身份 / 分号含非法 token → 身份不可确认
+                continue
+            if symbol not in members:
+                other_symbol += 1  # 身份确认但不含请求股票
+                continue
+            norm = _norm_lhb_row(cat, row, date)
+            if norm is None:
+                invalid_business += 1  # 含请求股票但业务字段非法
+                continue
+            key = (cat, date) + _lhb_dedupe_key(norm)
+            if key in seen:
+                duplicate += 1
+            seen[key] = norm  # 同键保留最后
+    warnings.append(
+        f"lhb 扫描 {scanned} 行；身份无法识别 {identity_unrecognized} 行，"
+        f"不含请求股票 {other_symbol} 行，业务字段非法 {invalid_business} 行，"
+        f"重复 {duplicate} 条，已过滤"
+    )
+    if not seen:
+        warnings.append("当前缓存未发现该股票龙虎榜记录")
+        return None, "empty"
+    # 稳定排序：date 倒序 → 固定分类顺序 → 分类内业务字段（先排序后裁剪，不丢新日期记录）
+    out = sorted(seen.values(), key=lambda r: (
+        -datetime.strptime(r["date"], "%Y-%m-%d").toordinal(),
+        cat_order.get(r.get("category"), 99),
+        _lhb_stable_sort(r),
+    ))
+    if len(out) > _LHB_OUTPUT_LIMIT:
+        truncated = len(out) - _LHB_OUTPUT_LIMIT
+        warnings.append(f"lhb 过滤后超过 {_LHB_OUTPUT_LIMIT} 条上限，已裁剪 {truncated} 行")
+        out = out[: _LHB_OUTPUT_LIMIT]
+    return out, None
+
+
+def _norm_chip(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """chip_distribution 真实结构校准（F2-C）。
+
+    真实为 wrapper 单键 + 标量对象（chipProfitRate/chipAvgCost/chipConcentration90/70），
+    不是旧的 distribution 数组；cost_90_low/high 等无真实来源字段不输出、不拼装分布点。
+    """
+    payload = unwrap_strict_westock_payload(data, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    date = _normalize_business_date(payload.get("date"))
+    if date is None:
+        return None, "日期非法"
+    out: dict[str, Any] = {"date": date}
+    for src, dst in (("chipProfitRate", "profit_ratio"), ("chipAvgCost", "average_cost"),
+                     ("chipConcentration90", "concentration_90"),
+                     ("chipConcentration70", "concentration_70")):
+        num = _norm_fin_num(payload.get(src))
+        if num is not None:
+            out[dst] = num
+    if len(out) == 1:
         return None, "缺少受控筹码字段"
     return out, None
 
@@ -789,7 +1202,7 @@ def _norm_intel_items(capability: str, data: Any, warnings: list[str]) -> list[d
 def _intel_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
     """升序排序：合法日期组(0)在前且按日期倒序（负 ordinal）；非法日期组(1)置末尾。
     同日按 category 固定顺序 + 标题。"""
-    date = _valid_date_str(item.get("date"))
+    date = _normalize_business_date(item.get("date"))
     title = _norm_text(item.get("title") or "") or ""
     if date is None:
         return (1, 0, 0, title)
@@ -799,54 +1212,328 @@ def _intel_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
     return (0, -ordinal, order, title)
 
 
-def _norm_event_items(data: Any, warnings: list[str]) -> tuple[Any, str | None]:
-    rows = data
-    if isinstance(data, dict):
-        rows = _pick(data, ("events", "items", "list"))
-    if not isinstance(rows, list):
-        return None, "非列表"
-    out: list[dict[str, Any]] = []
-    for item in rows:
-        if not isinstance(item, dict):
-            return None, "行非对象"
-        normalized: dict[str, Any] = {}
-        for key in ("date", "type", "title", "summary"):
-            if key in item and item[key] is not None:
-                limit = MAX_TITLE if key == "title" else MAX_TEXT
-                normalized[key] = _norm_text(item[key], limit)
-        for tag_key in _EVENT_TAGS:
-            if tag_key in item and item[tag_key] is not None:
-                raw = item[tag_key]
-                tags_raw = raw if isinstance(raw, list) else [str(raw)]
-                tags = [t for t in (_norm_text(x, MAX_TEXT) for x in tags_raw) if t]
-                if tags:
-                    normalized["tags"] = tags
-                break
-        if "date" in normalized or "title" in normalized:
-            out.append(normalized)
-    return (_trim_list(out, "events", warnings, _MAX_ITEMS["events"]) or None), None
+def _norm_datetime_keep(value: Any) -> str | None:
+    """资讯 datetime（F2-C 第三轮严格版）：保留完整时间，不截断。
+
+    - `YYYY-MM-DD HH:MM:SS`：strptime 完整验证（99:99:99 / 非法日期拒绝），naive 不附加 UTC
+    - ISO 8601 带时区：Z / ±HH:MM / ±HHMM / 毫秒微秒；fromisoformat 验证后原样保留
+    - 纯日期 YYYY-MM-DD：降级接受（合法日期保留）
+    - 不 strip：前后空格、prefix/suffix、非法 datetime 全部拒绝
+    """
+    if not isinstance(value, str):
+        return None
+    text = value
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", text):
+        try:
+            datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+        return text  # 保留来源时间，不附加 UTC
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?"
+                    r"(?:Z|[+-]\d{2}:?\d{2})?", text):
+        norm = text.replace("Z", "+00:00")
+        norm = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", norm)
+        try:
+            datetime.fromisoformat(norm)
+        except ValueError:
+            return None
+        return text  # 原样保留（含时区/毫秒微秒）
+    return _normalize_business_date(text)
 
 
-def _norm_risk_items(data: Any, warnings: list[str]) -> tuple[Any, str | None]:
-    rows = data
-    if isinstance(data, dict):
-        rows = _pick(data, ("risks", "items", "list"))
+def _extract_institution(title: str) -> str | None:
+    """从研报标题提取券商名（【X】前缀）；无则 None。"""
+    m = re.search(r"【([^】]+)】", title)
+    if m:
+        return m.group(1).strip()[:MAX_TITLE]
+    return None
+
+
+def _norm_report_row(row: Any, symbol: str) -> dict[str, Any] | None:
+    """reports 行：身份由行内 symbol/symbols 明确证明；time 保留完整 datetime。"""
+    if not isinstance(row, dict):
+        return None
+    sym = row.get("symbol")
+    ok = isinstance(sym, str) and westock_code_to_symbol(sym) == symbol
+    if not ok:
+        syms = row.get("symbols")
+        ok = isinstance(syms, list) and any(
+            westock_code_to_symbol(s) == symbol for s in syms if isinstance(s, str))
+    if not ok:
+        return None
+    title = _norm_title(row.get("title"))
+    if not title:
+        return None
+    time = _norm_datetime_keep(row.get("time"))
+    out: dict[str, Any] = {"category": "reports", "title": title}
+    if time:
+        out["time"] = time
+        date = _business_date_of(time)
+        if date:
+            out["date"] = date
+    inst = _extract_institution(title)
+    if inst:
+        out["institution"] = inst
+    rating = _norm_text(row.get("tzpj"), 100)
+    if rating:
+        out["rating"] = rating
+    return out
+
+
+def _norm_reports(data: Any, symbol: str, warnings: list[str]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """reports 真实分页结构校准（F2-C）：total_num/total_page/data；行 symbol 身份过滤。"""
+    if not isinstance(data, dict):
+        return None, "非对象"
+    rows = data.get("data")
     if not isinstance(rows, list):
         return None, "非列表"
+    limit = _MAX_ITEMS["reports"]
+    if len(rows) > limit:
+        warnings.append(f"reports 超过 {limit} 条上限，已裁剪")
+        rows = rows[: limit]
     out: list[dict[str, Any]] = []
-    for item in rows:
-        if not isinstance(item, dict):
-            return None, "行非对象"
-        normalized: dict[str, Any] = {}
-        for key, aliases in _RISK_FIELDS:
-            raw = _pick(item, aliases)
-            if raw is None:
+    invalid = 0
+    for row in rows:
+        norm = _norm_report_row(row, symbol)
+        if norm is None:
+            invalid += 1
+            continue
+        out.append(norm)
+    if invalid:
+        warnings.append(f"reports 含 {invalid} 行身份不匹配或非法记录，已丢弃")
+    if not out:
+        return None, "empty"
+    return out, None
+
+
+def _norm_announcement_row(row: Any, symbol: str) -> dict[str, Any] | None:
+    """announcements 行：symbol 身份 + time/update_time 保留完整 datetime。"""
+    if not isinstance(row, dict):
+        return None
+    sym = row.get("symbol")
+    if not isinstance(sym, str) or westock_code_to_symbol(sym) != symbol:
+        return None
+    title = _norm_title(row.get("title"))
+    if not title:
+        return None
+    time = _norm_datetime_keep(row.get("time"))
+    update = _norm_datetime_keep(row.get("update_time"))
+    out: dict[str, Any] = {"category": "announcements", "title": title}
+    if time:
+        out["time"] = time
+        date = _business_date_of(time)
+        if date:
+            out["date"] = date
+    if update:
+        out["update_time"] = update
+    ann_type = _norm_text(row.get("type"), 100)
+    if ann_type:
+        out["type"] = ann_type
+    url = _safe_url(row.get("url"))
+    if url:
+        out["url"] = url
+    return out
+
+
+def _norm_announcements(data: Any, symbol: str, warnings: list[str]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """announcements 真实分页结构校准（F2-C）。"""
+    if not isinstance(data, dict):
+        return None, "非对象"
+    rows = data.get("data")
+    if not isinstance(rows, list):
+        return None, "非列表"
+    limit = _MAX_ITEMS["announcements"]
+    if len(rows) > limit:
+        warnings.append(f"announcements 超过 {limit} 条上限，已裁剪")
+        rows = rows[: limit]
+    out: list[dict[str, Any]] = []
+    invalid = 0
+    for row in rows:
+        norm = _norm_announcement_row(row, symbol)
+        if norm is None:
+            invalid += 1
+            continue
+        out.append(norm)
+    if invalid:
+        warnings.append(f"announcements 含 {invalid} 行身份不匹配或非法记录，已丢弃")
+    if not out:
+        return None, "empty"
+    return out, None
+
+
+def _intel_derived_as_of(items: list[dict[str, Any]], prefer_update: bool = False) -> str | None:
+    """intel 能力 as_of：从标准化结果的最大合法业务日期派生。
+
+    reports 用行 date（time 派生）；announcements 优先 update_time 的日期，否则 time/date。
+    无合法业务日期 → None（不使用系统当天或缓存回显日期冒充）。
+    """
+    best: str | None = None
+    for it in items:
+        raw: Any = it.get("date")
+        if prefer_update:
+            raw = it.get("update_time") or it.get("time") or raw
+        valid = _business_date_of(raw)
+        if valid and (best is None or valid > best):
+            best = valid
+    return best
+
+
+def _norm_events(data: Any, symbol: str, warnings: list[str]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """events 真实结构校准（F2-C 定点修正）。
+
+    流程：成员身份验证 → 固定 schema {category/date/title} → 去重键 date+title（保留最后）
+    → date 倒序 + title 稳定排序 → ≤100 条裁剪。
+    分别统计非法行（结构/空标题）、身份冲突、重复、裁剪；warning 固定脱敏。
+    """
+    if not isinstance(data, dict):
+        return None, "非对象"
+    date = _normalize_business_date(data.get("date"))
+    if date is None:
+        return None, "日期非法"
+    stocks = data.get("stocks")
+    if not isinstance(stocks, list):
+        return None, "非列表"
+    invalid = conflict = duplicates = 0
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for st in stocks:
+        if not isinstance(st, dict):
+            invalid += 1
+            continue
+        code = st.get("code")
+        if not isinstance(code, str) or westock_code_to_symbol(code) != symbol:
+            conflict += 1  # 无法证明属于个股 → 身份冲突
+            continue
+        descs = st.get("tagDescs")
+        if not isinstance(descs, list):
+            invalid += 1
+            continue
+        for desc in descs:
+            title = _norm_title(desc)
+            if not title:
+                invalid += 1
                 continue
-            number = _as_finite_float(raw)
-            normalized[key] = number if number is not None else _norm_text(raw, MAX_TEXT)
-        if normalized:
-            out.append(normalized)
-    return (_trim_list(out, "risk", warnings, _MAX_ITEMS["risk"]) or None), None
+            key = (date, title)
+            if key in by_key:
+                duplicates += 1
+            by_key[key] = {"category": "events", "date": date, "title": title}  # 同键保留最后
+    if invalid:
+        warnings.append(f"events 含 {invalid} 行非法记录，已丢弃")
+    if conflict:
+        warnings.append(f"events 含 {conflict} 行身份冲突记录，已丢弃")
+    if duplicates:
+        warnings.append(f"events 含 {duplicates} 条重复事件，保留最后有效值")
+    if not by_key:
+        return None, "empty"
+    out = sorted(by_key.values(),
+                 key=lambda r: (-datetime.strptime(r["date"], "%Y-%m-%d").toordinal(), r["title"]))
+    limit = _MAX_ITEMS["events"]
+    if len(out) > limit:
+        warnings.append(f"events 超过 {limit} 条上限，已裁剪")
+        out = out[: limit]
+    return out, None
+
+
+_RISK_CATEGORY_LIMIT = 100
+_RISK_OUT_CATEGORIES = (
+    ("bondRating", "bond_ratings"),
+    ("executiveTransfer", "executive_transfers"),
+    ("lawsuit", "lawsuits"),
+    ("leaderChange", "leader_changes"),
+    ("seasonedIssue", "seasoned_issues"),
+    ("unlock", "unlocks"),
+)
+
+
+def _norm_risk_row(cat: str, row: Any) -> dict[str, Any] | None:
+    """risk 分类行：每类固定条目 schema，禁止任意键透传。
+
+    leaderChange 有真实样本（reason/date/position）；其余分类无样本，
+    仅接受通用受控字段白名单，不猜测具体业务语义。
+    """
+    if not isinstance(row, dict):
+        return None
+    out: dict[str, Any] = {}
+    if cat == "leaderChange":
+        title = _norm_text(row.get("leaderChangeReason"), 200)
+        if title:
+            out["title"] = title
+        date = _normalize_business_date(row.get("leaderStartDate"))
+        if date:
+            out["date"] = date
+        pos = _norm_text(row.get("leaderPosition"), 200)
+        if pos:
+            out["summary"] = pos
+        return out or None
+    for key in ("date", "title", "summary", "level", "status"):
+        val = row.get(key)
+        if val is None:
+            continue
+        text = _norm_text(val, 200 if key == "title" else MAX_TEXT)
+        if text:
+            out[key] = text
+    for key in ("amount", "ratio"):
+        val = row.get(key)
+        if val is None:
+            continue
+        num = _norm_fin_num(val)
+        if num is not None:
+            out[key] = num
+    url = _safe_url(row.get("url"))
+    if url:
+        out["url"] = url
+    return out or None
+
+
+def _norm_risk(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """risk 真实结构校准（F2-C）：6 分类 + pledge 对象；空数组 supported-but-empty。"""
+    payload = unwrap_strict_westock_payload(data, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    out: dict[str, Any] = {}
+    for src, dst in _RISK_OUT_CATEGORIES:
+        rows = payload.get(src)
+        if not isinstance(rows, list):
+            continue
+        if len(rows) > _RISK_CATEGORY_LIMIT:
+            warnings.append(f"risk {dst} 超过 {_RISK_CATEGORY_LIMIT} 条上限，已裁剪")
+        items: list[dict[str, Any]] = []
+        for r in rows:
+            norm = _norm_risk_row(src, r)
+            if norm is not None:
+                items.append(norm)
+        out[dst] = items[: _RISK_CATEGORY_LIMIT]
+    pledge = payload.get("pledge")
+    if isinstance(pledge, dict):
+        p: dict[str, Any] = {}
+        count = _norm_fin_num(pledge.get("pledgeNum"))
+        if count is not None:
+            p["count"] = count
+        ratio = _norm_fin_num(pledge.get("pledgeRatio"))
+        if ratio is not None:
+            p["ratio"] = ratio
+        total = _norm_fin_num(pledge.get("totalPledge"))
+        if total is not None:
+            p["amount"] = total
+        if p:
+            out["pledge"] = p
+    if not out:
+        return None, "缺少受控风险字段"
+    return out, None
+
+
+def _risk_as_of(normalized: Any) -> str | None:
+    """risk as_of：各分类条目中最大合法日期。"""
+    if not isinstance(normalized, dict):
+        return None
+    dates = [
+        r.get("date") for v in normalized.values()
+        if isinstance(v, list) for r in v
+        if isinstance(r, dict) and r.get("date")
+    ]
+    return max(dates) if dates else None
 
 
 # ---------------------------------------------------------------------- #
@@ -862,9 +1549,14 @@ class StocksDeepService:
             raise ValueError("非法 symbol")
         return self.curated._westock_cache(capability, symbol)
 
-    def _capability_meta(self, capability: str, symbol: str) -> dict[str, Any] | None:
-        """公开元数据：status/as_of/fetched_at/cache_age_seconds（不含 tool/路径/异常）。"""
-        envelope, status = self._cap(capability, symbol)
+    def _capability_meta(self, capability: str, symbol: str, scope: str | None = None) -> dict[str, Any] | None:
+        """公开元数据：status/as_of/fetched_at/cache_age_seconds（不含 tool/路径/异常）。
+
+        scope 缺省为 symbol；lhb 等 global-scope 能力可显式传 "global"（内部调用，无校验）。
+        """
+        if scope is None:
+            scope = symbol
+        envelope, status = self.curated._westock_cache(capability, scope)
         if envelope is None:
             return None
         from .stocks_service import _parse_iso_ts
@@ -894,7 +1586,7 @@ class StocksDeepService:
             if not m:
                 continue
             raw = m.get("as_of")
-            valid = _valid_date_str(raw)
+            valid = _normalize_business_date(raw)
             if valid and (best_as_of is None or valid > best_as_of):
                 best_as_of = valid
         return {
@@ -1031,16 +1723,16 @@ class StocksDeepService:
         warnings: list[str] = []
 
         margin, status, m = self._cap_with_norm(
-            "margin", symbol, lambda d: (_norm_mapping(d, _MARGIN_FIELDS), None), warnings)
+            "margin", symbol, lambda d: _norm_margin(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n.get("date") if n else None))
         status_map["margin"] = status
         data["margin"] = margin
         meta["margin"] = m
 
         block_trade, status, m = self._cap_with_norm(
             "block_trade", symbol,
-            lambda d: (_norm_item_list(d, ("date", "price", "shares", "amount", "discount"),
-                                        "block_trade", warnings, _MAX_ITEMS["block_trade"]), None),
-            warnings)
+            lambda d: _norm_block_trade(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n[0]["date"] if n else None))
         status_map["block_trade"] = status
         data["block_trade"] = block_trade
         meta["block_trade"] = m
@@ -1055,22 +1747,34 @@ class StocksDeepService:
         meta["fund_flow"] = m
 
         northbound, status, m = self._cap_with_norm(
-            "northbound", symbol, lambda d: (_norm_mapping(d, _NORTHBOUND_FIELDS), None), warnings)
+            "northbound", symbol, lambda d: _norm_northbound(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n["current"]["date"] if n and n.get("current") else None))
         status_map["northbound"] = status
         data["northbound"] = northbound
         meta["northbound"] = m
 
-        lhb, status, m = self._cap_with_norm(
-            "lhb", symbol,
-            lambda d: (_norm_item_list(d, ("date", "reason", "seat", "net_buy", "buy", "sell"),
-                                       "lhb", warnings, _MAX_ITEMS["lhb"]), None),
-            warnings)
-        status_map["lhb"] = status
-        data["lhb"] = lhb
-        meta["lhb"] = m
+        # lhb：缓存 scope 固定 global（不复制个股缓存），读取后严格成员过滤
+        lhb_env, l_status = self.curated._westock_cache("lhb", "global")
+        meta["lhb"] = self._capability_meta("lhb", symbol, scope="global")
+        if lhb_env is None or l_status == "unavailable":
+            status_map["lhb"] = "unavailable"
+            data["lhb"] = None
+        else:
+            lhb_rows, l_reason = _norm_lhb(lhb_env.get("data"), symbol, warnings)
+            if lhb_rows is None:
+                status_map["lhb"] = "unavailable"
+                data["lhb"] = None
+                warnings.append(f"lhb 缓存结构无法标准化（{l_reason or '无可识别字段'}），已降级为不可用")
+            else:
+                status_map["lhb"] = l_status
+                data["lhb"] = lhb_rows
+                if meta["lhb"] is not None:
+                    meta["lhb"] = dict(meta["lhb"])
+                    meta["lhb"]["as_of"] = lhb_rows[0]["date"]
 
         chip, status, m = self._cap_with_norm(
-            "chip_distribution", symbol, lambda d: _norm_chip(d, warnings), warnings)
+            "chip_distribution", symbol, lambda d: _norm_chip(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n.get("date") if n else None))
         status_map["chip_distribution"] = status
         data["chip_distribution"] = chip
         meta["chip_distribution"] = m
@@ -1107,6 +1811,26 @@ class StocksDeepService:
                         warnings.append(f"{capability} 缓存结构无法标准化，已降级为不可用")
                     # reason == "identity_all_dropped" 的 warning 已在函数内记录
                     continue
+            elif capability == "reports":
+                items, reason = _norm_reports(envelope.get("data"), symbol, warnings)
+                if items is None:
+                    status_map[capability] = "unavailable"
+                    data[capability] = None
+                    warnings.append(f"{capability} 缓存身份校验或结构标准化失败，已降级为不可用")
+                    continue
+                m = meta[capability]
+                if m is not None:
+                    m["as_of"] = _intel_derived_as_of(items)  # 派生业务日期，覆盖缓存回显
+            elif capability == "announcements":
+                items, reason = _norm_announcements(envelope.get("data"), symbol, warnings)
+                if items is None:
+                    status_map[capability] = "unavailable"
+                    data[capability] = None
+                    warnings.append(f"{capability} 缓存身份校验或结构标准化失败，已降级为不可用")
+                    continue
+                m = meta[capability]
+                if m is not None:
+                    m["as_of"] = _intel_derived_as_of(items, prefer_update=True)
             else:
                 items = _norm_intel_items(capability, envelope.get("data"), warnings)
                 if items is None:
@@ -1133,18 +1857,20 @@ class StocksDeepService:
         warnings: list[str] = []
 
         events, status, m = self._cap_with_norm(
-            "events", symbol, lambda d: _norm_event_items(d, warnings), warnings)
+            "events", symbol, lambda d: _norm_events(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n[0]["date"] if n else None))
         status_map["events"] = status
         data["events"] = events
         meta["events"] = m
 
         risk, status, m = self._cap_with_norm(
-            "risk", symbol, lambda d: _norm_risk_items(d, warnings), warnings)
+            "risk", symbol, lambda d: _norm_risk(d, symbol, warnings), warnings,
+            as_of_provider=_risk_as_of)
         status_map["risk"] = status
         data["risk"] = risk
         meta["risk"] = m
-        if data.get("risk"):
-            warnings.append("风险提示来自 Westock 缓存，仅作研究展示，不替代人工判断")
+        if data.get("risk") is not None:
+            warnings.append("风险信息来自 Westock 缓存，仅作研究展示，不替代人工核实。")
         return self._envelope(symbol, status_map, data, warnings, meta)
 
     # ------------------------------------------------------------------ #

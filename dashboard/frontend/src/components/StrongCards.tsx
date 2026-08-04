@@ -267,21 +267,42 @@ export function MarginCard({ data, meta }: { data: Record<string, unknown> | nul
   if (!data) return <DeepCard title="融资融券" meta={meta}><p className="body-copy muted">暂无两融数据。</p></DeepCard>;
   return (
     <DeepCard title="融资融券" meta={meta}>
-      <MoneyField label="融资余额" value={data.margin_balance} />
-      <MoneyField label="融资变化" value={data.margin_change} />
-      <MoneyField label="融券余额" value={data.short_balance} />
-      <MoneyField label="融券变化" value={data.short_change} />
+      <Field label="数据日期" value={data.date} />
+      <MoneyField label="融资余额" value={data.financing_balance} />
+      <MoneyField label="融资买入" value={data.financing_buy} />
+      <MoneyField label="融资偿还" value={data.financing_repay} />
+      <MoneyField label="融券余额" value={data.securities_lending_balance} />
+      <MoneyField label="两融余额（融资+融券）" value={data.margin_balance} />
     </DeepCard>
   );
 }
 
 export function NorthboundCard({ data, meta }: { data: Record<string, unknown> | null | undefined; meta?: CapabilityMeta | null }) {
   if (!data) return <DeepCard title="北向持股" meta={meta}><p className="body-copy muted">暂无北向持股数据。</p></DeepCard>;
+  const current = data.current as Record<string, unknown> | undefined;
+  const previous = data.previous as Record<string, unknown> | undefined;
+  const unitNote = typeof data.unit_note === 'string' ? data.unit_note : undefined;
+  const renderSide = (label: string, side: Record<string, unknown> | undefined) => {
+    if (!side) return <p className="body-copy muted">{label}：暂无。</p>;
+    return (
+      <div>
+        <div className="muted">{label}</div>
+        <Field label="数据日期" value={side.date} />
+        <SharesField label="持股数量" value={side.holding_shares} />
+        <RatioField label="持股比例" value={side.holding_ratio} />
+        <MoneyField label="持股市值" value={side.holding_cap} />
+        <SharesField label="较上季变化" value={side.shares_change_q} />
+        <SharesField label="较上年变化" value={side.shares_change_y} />
+        <MoneyField label="市值较上季变化" value={side.cap_change_q} />
+        <MoneyField label="市值较上年变化" value={side.cap_change_y} />
+      </div>
+    );
+  };
   return (
     <DeepCard title="北向持股" meta={meta}>
-      <SharesField label="持股数量" value={data.holding_shares} />
-      <RatioField label="持股比例" value={data.holding_ratio} />
-      <SharesField label="持股变化" value={data.change} />
+      {renderSide('本期', current)}
+      {renderSide('上期', previous)}
+      {unitNote ? <p className="body-copy muted">{unitNote}</p> : null}
     </DeepCard>
   );
 }
@@ -292,11 +313,12 @@ export function BlockTradeTable({ data, meta }: { data: Record<string, unknown>[
       {!data || data.length === 0 ? <p className="body-copy muted">暂无大宗交易。</p> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>日期</th><th>价格</th><th>股数</th><th>金额</th><th>折价率</th></tr></thead>
+            <thead><tr><th>日期</th><th>价格</th><th>金额</th><th>折价率</th><th>买方</th><th>卖方</th></tr></thead>
             <tbody>
               {data.map((t, i) => (
-                <tr key={i}><td>{fmtText(t.date)}</td><td>{fmtNum(t.price)} 元</td><td>{fmtShares(t.shares)}</td>
-                  <td>{fmtMoney(t.amount)}</td><td>{t.discount == null ? '暂无' : `${fmtNum(t.discount)}%`}</td></tr>
+                <tr key={i}><td>{fmtText(t.date)}</td><td>{fmtNum(t.price)} 元</td>
+                  <td>{fmtMoney(t.amount)}</td><td>{t.discount_rate == null ? '暂无' : `${fmtNum(t.discount_rate)}%`}</td>
+                  <td>{fmtText(t.buyer)}</td><td>{fmtText(t.seller)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -306,17 +328,110 @@ export function BlockTradeTable({ data, meta }: { data: Record<string, unknown>[
   );
 }
 
+const LHB_CAT_LABEL: Record<string, string> = {
+  jg: '机构专用', yzb: '游资榜', yyb: '营业部', gslmr: '高胜率买入', gslxw: '高胜率席位',
+};
+
+/** 受控符号列表（yyb/gslxw.symbols），不做任意对象遍历。 */
+function LhbSymbolChips({ symbols }: { symbols?: unknown }) {
+  const list = Array.isArray(symbols) ? symbols.filter((s): s is string => typeof s === 'string') : [];
+  if (list.length === 0) return null;
+  return <div className="deep-chip-row">{list.map((s) => <span key={s} className="deep-chip">{s}</span>)}</div>;
+}
+
+/** 受控股票对列表（yzb.buy_stocks/sell_stocks）。 */
+function LhbStockPairList({ items, label }: { items?: unknown; label: string }) {
+  const list = Array.isArray(items)
+    ? items.filter((it): it is Record<string, unknown> => !!it && typeof it === 'object' && !Array.isArray(it))
+    : [];
+  if (list.length === 0) return null;
+  return (
+    <div className="muted">
+      {label}：
+      {list.map((it) => `${fmtText(it.symbol)} ${fmtText(it.name)}`).join('、')}
+    </div>
+  );
+}
+
+/** 受控营业部列表（gslmr.branches）。 */
+function LhbBranchList({ branches, label }: { branches?: unknown; label: string }) {
+  const list = Array.isArray(branches) ? branches.filter((b): b is string => typeof b === 'string') : [];
+  if (list.length === 0) return null;
+  return <div className="muted">{label}：{list.map((b) => fmtText(b)).join('、')}</div>;
+}
+
+/** 龙虎榜行明细：按 category 分支渲染受控字段，禁止 JSON.stringify / 任意对象遍历。 */
+function LhbRowDetail({ row }: { row: Record<string, unknown> }) {
+  const cat = row.category;
+  if (cat === 'jg') {
+    return (
+      <div className="deep-fields-inline">
+        <span className="deep-chip">上榜天数 {fmtNum(row.td_days)}</span>
+        <span className="deep-chip">机构买入额 {fmtMoney(row.inst_buy_amount)}</span>
+        <span className="deep-chip">机构买入占比 {fmtRatio(row.inst_buy_rate)}</span>
+        <span className="deep-chip">买入总额 {fmtMoney(row.total_buy_amount)}</span>
+        <span className="deep-chip">净买入 {fmtMoney(row.net_buy_amount)}</span>
+        <span className="deep-chip">净买入占比 {fmtRatio(row.net_buy_rate)}</span>
+      </div>
+    );
+  }
+  if (cat === 'yzb') {
+    return (
+      <div>
+        <div className="deep-fields-inline"><span className="deep-chip">净买入 {fmtMoney(row.net_amount)}</span></div>
+        <LhbStockPairList items={row.buy_stocks} label="买入" />
+        <LhbStockPairList items={row.sell_stocks} label="卖出" />
+      </div>
+    );
+  }
+  if (cat === 'yyb') {
+    return (
+      <div>
+        <div className="deep-fields-inline"><span className="deep-chip">买入金额 {fmtMoney(row.buy_amount)}</span></div>
+        <LhbSymbolChips symbols={row.symbols} />
+      </div>
+    );
+  }
+  if (cat === 'gslmr') {
+    return (
+      <div>
+        <div className="deep-fields-inline">
+          <span className="deep-chip">净买入 {fmtMoney(row.net_amount)}</span>
+          <span className="deep-chip">上涨概率 {fmtRatio(row.up_rate)}</span>
+        </div>
+        <LhbBranchList branches={row.branches} label="营业部" />
+      </div>
+    );
+  }
+  if (cat === 'gslxw') {
+    return (
+      <div>
+        <div className="deep-fields-inline">
+          <span className="deep-chip">净买入 {fmtMoney(row.net_amount)}</span>
+          <span className="deep-chip">胜率 {fmtRatio(row.win_rate)}</span>
+        </div>
+        <LhbSymbolChips symbols={row.symbols} />
+      </div>
+    );
+  }
+  return null;
+}
+
 export function LhbTable({ data, meta }: { data: Record<string, unknown>[] | null | undefined; meta?: CapabilityMeta | null }) {
   return (
     <DeepCard title="龙虎榜" meta={meta}>
       {!data || data.length === 0 ? <p className="body-copy muted">暂无龙虎榜数据。</p> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>日期</th><th>上榜原因</th><th>席位</th><th>净买入</th><th>买入</th><th>卖出</th></tr></thead>
+            <thead><tr><th>日期</th><th>分类</th><th>名称</th><th>明细</th></tr></thead>
             <tbody>
               {data.map((t, i) => (
-                <tr key={i}><td>{fmtText(t.date)}</td><td>{fmtText(t.reason)}</td><td>{fmtText(t.seat)}</td>
-                  <td>{fmtMoney(t.net_buy)}</td><td>{fmtMoney(t.buy)}</td><td>{fmtMoney(t.sell)}</td></tr>
+                <tr key={i}>
+                  <td>{fmtText(t.date)}</td>
+                  <td>{fmtText(LHB_CAT_LABEL[t.category as string] ?? t.category)}</td>
+                  <td>{fmtText(t.name)}</td>
+                  <td><LhbRowDetail row={t} /></td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -328,29 +443,19 @@ export function LhbTable({ data, meta }: { data: Record<string, unknown>[] | nul
 
 export function ChipSummary({ data, meta }: { data: Record<string, unknown> | null | undefined; meta?: CapabilityMeta | null }) {
   if (!data) return <DeepCard title="筹码分布" meta={meta}><p className="body-copy muted">暂无筹码数据。</p></DeepCard>;
-  const dist = (data.distribution ?? []) as Record<string, unknown>[];
   return (
     <DeepCard title="筹码分布" meta={meta}>
-      <Field label="筹码集中度" value={data.concentration == null ? '暂无' : fmtRatio(data.concentration)} />
-      <div className="muted">价格分布（前 50 点）</div>
-      {dist.length === 0 ? <p className="body-copy muted">暂无分布点。</p> : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>价格</th><th>比例</th><th>筹码量</th></tr></thead>
-            <tbody>
-              {dist.map((p, i) => (
-                <tr key={i}><td>{fmtNum(p.price)} 元</td><td>{fmtRatio(p.ratio)}</td><td>{fmtNum(p.chips)}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <Field label="数据日期" value={data.date} />
+      <RatioField label="获利比例" value={data.profit_ratio} />
+      <Field label="平均成本" value={data.average_cost == null ? '暂无' : `${fmtNum(data.average_cost)} 元`} />
+      <RatioField label="90% 集中度" value={data.concentration_90} />
+      <RatioField label="70% 集中度" value={data.concentration_70} />
     </DeepCard>
   );
 }
 
 export function IntelList({ items, category, metas }: {
-  items: { category: string; title?: string; summary?: string; source?: string; date?: string; url?: string; org?: string; rating?: string; target_price?: number; ann_type?: string }[];
+  items: { category: string; title?: string; summary?: string; source?: string; date?: string; url?: string; org?: string; rating?: string; target_price?: number; ann_type?: string; time?: string; update_time?: string; type?: string; institution?: string }[];
   category: string;
   metas?: Record<string, CapabilityMeta | null>;
 }) {
@@ -371,9 +476,21 @@ export function IntelList({ items, category, metas }: {
           {items.map((item, i) => (
             <li key={i}>
               <span className="badge badge-neutral">{label(item.category)}</span>
-              {' '}{item.date ?? '日期未知'} · <strong>{fmtText(item.title)}</strong>
+              {' '}{item.date ?? '日期未知'}
+              {item.time ? <span className="muted"> · {item.time}</span> : null}
+              {' · '}<strong>{fmtText(item.title)}</strong>
+              {item.category === 'reports' ? (
+                item.institution || item.org ? (
+                  <span> · {fmtText(item.institution ?? item.org)}{item.rating ? ` ${fmtText(item.rating)}` : ''}{item.target_price != null ? ` 目标价 ${fmtNum(item.target_price)} 元` : ''}</span>
+                ) : null
+              ) : null}
+              {item.category === 'announcements' ? (
+                <span className="muted">
+                  {item.type ? ` · ${fmtText(item.type)}` : ''}
+                  {item.update_time ? ` · 更新 ${item.update_time}` : ''}
+                </span>
+              ) : null}
               {item.source ? `（${item.source}）` : ''}
-              {item.org ? ` · ${item.org}${item.rating ? ` ${item.rating}` : ''}${item.target_price != null ? ` 目标价 ${fmtNum(item.target_price)} 元` : ''}` : ''}
               {item.summary ? <div className="muted"><CollapsibleText text={fmtText(item.summary)} /></div> : null}
               {item.url ? <div><a href={item.url} target="_blank" rel="noopener noreferrer">查看原文</a></div> : null}
             </li>
@@ -384,17 +501,15 @@ export function IntelList({ items, category, metas }: {
   );
 }
 
-export function EventsList({ data, meta }: { data: { date?: string; type?: string; title?: string; summary?: string; tags?: string[] }[] | null | undefined; meta?: CapabilityMeta | null }) {
+export function EventsList({ data, meta }: { data: { category?: string; date?: string; title?: string }[] | null | undefined; meta?: CapabilityMeta | null }) {
   return (
     <DeepCard title="事件" meta={meta}>
       {!data || data.length === 0 ? <p className="body-copy muted">暂无事件。</p> : (
         <ul className="stock-list">
           {data.map((e, i) => (
             <li key={i}>
-              {e.date ?? '日期未知'} · {e.type ? <span className="badge badge-neutral">{e.type}</span> : null}
+              {e.date ?? '日期未知'}
               {' '}<strong>{fmtText(e.title)}</strong>
-              {e.tags?.length ? ` [${e.tags.join('、')}]` : ''}
-              {e.summary ? <div className="muted"><CollapsibleText text={fmtText(e.summary)} /></div> : null}
             </li>
           ))}
         </ul>
@@ -403,19 +518,67 @@ export function EventsList({ data, meta }: { data: { date?: string; type?: strin
   );
 }
 
-export function RiskList({ data, meta }: { data: { severity?: string; title?: string; description?: string }[] | null | undefined; meta?: CapabilityMeta | null }) {
+const RISK_CAT_BLOCKS: [string, string][] = [
+  ['bond_ratings', '债券评级'],
+  ['executive_transfers', '高管变动'],
+  ['lawsuits', '诉讼'],
+  ['leader_changes', '管理层变更'],
+  ['seasoned_issues', '增发'],
+  ['unlocks', '解禁'],
+];
+
+/** 风险分类条目：受控字段（date/title/summary/level/url），不遍历未知键。 */
+function RiskCategoryBlock({ label, rows }: { label: string; rows?: unknown }) {
+  const list = Array.isArray(rows)
+    ? rows.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r))
+    : [];
   return (
-    <DeepCard title="风险提示（Westock 来源，不替代人工判断）" meta={meta}>
-      {!data || data.length === 0 ? <p className="body-copy muted">暂无风险提示。</p> : (
+    <div>
+      <div className="muted">{label}</div>
+      {list.length === 0 ? <p className="body-copy muted">暂无。</p> : (
         <ul className="stock-list">
-          {data.map((r, i) => (
+          {list.map((r, i) => (
             <li key={i}>
-              {r.severity ? <span className="badge badge-warning">{fmtText(r.severity)}</span> : null}
+              {r.level != null ? <span className="badge badge-warning">{fmtText(r.level)}</span> : null}
               {' '}<strong>{fmtText(r.title)}</strong>
-              {r.description ? <div className="muted"><CollapsibleText text={fmtText(r.description)} /></div> : null}
+              {r.date ? <span className="muted"> · {fmtText(r.date)}</span> : null}
+              {r.summary ? <div className="muted"><CollapsibleText text={fmtText(r.summary)} /></div> : null}
+              {typeof r.url === 'string' && r.url
+                ? <div><a href={r.url} target="_blank" rel="noopener noreferrer">查看</a></div> : null}
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** 质押对象：仅展示 count/ratio/amount 三个受控字段。 */
+function RiskPledgeBlock({ pledge }: { pledge?: Record<string, unknown> }) {
+  if (!pledge) return null;
+  return (
+    <div>
+      <div className="muted">股权质押</div>
+      <div className="deep-fields-inline">
+        <span className="deep-chip">质押笔数 {fmtNum(pledge.count)}</span>
+        <span className="deep-chip">质押比例 {fmtRatio(pledge.ratio)}</span>
+        <span className="deep-chip">质押金额 {fmtMoney(pledge.amount)}</span>
+      </div>
+    </div>
+  );
+}
+
+export function RiskList({ data, meta }: { data: Record<string, unknown> | null | undefined; meta?: CapabilityMeta | null }) {
+  const risk = (data ?? {}) as Record<string, unknown>;
+  const pledge = risk.pledge as Record<string, unknown> | undefined;
+  return (
+    <DeepCard title="风险提示（Westock 来源，不替代人工核实）" meta={meta}>
+      {Object.keys(risk).length === 0 ? <p className="body-copy muted">暂无风险提示。</p> : (
+        <div>
+          {RISK_CAT_BLOCKS.map(([key, label]) => <RiskCategoryBlock key={key} label={label} rows={risk[key]} />)}
+          <RiskPledgeBlock pledge={pledge} />
+          <p className="body-copy muted">风险信息来自 Westock 缓存，仅作研究展示，不替代人工核实。</p>
+        </div>
       )}
     </DeepCard>
   );

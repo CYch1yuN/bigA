@@ -144,19 +144,18 @@ describe('股票详情页：页面级 Tab 懒加载（Phase C）', () => {
   });
 
   it('长摘要折叠提供展开/收起', async () => {
-    (api.stocksEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (api.stocksIntel as ReturnType<typeof vi.fn>).mockResolvedValue({
       ...BASE,
-      availability: { events: 'fresh', risk: 'unavailable' },
-      capability_meta: {
-        events: { status: 'fresh', as_of: '2026-07-31', fetched_at: null, cache_age_seconds: 10 },
-        risk: { status: 'unavailable', as_of: null, fetched_at: null, cache_age_seconds: null },
-      },
-      data: { events: [{ date: '2026-08-01', title: '重大事项', summary: '长摘要'.repeat(60) }], risk: null },
+      availability: { news: 'fresh', reports: 'fresh', announcements: 'fresh' },
+      capability_meta: { news: null, reports: null, announcements: null },
+      data: { items: [{ category: 'news', title: '新闻', date: '2026-07-31',
+                        summary: '长摘要'.repeat(60) }], total: 1,
+               news: [], reports: [], announcements: [] },
       warnings: [],
     });
     mockDeep();
     await renderDetail();
-    fireEvent.click(screen.getByRole('button', { name: '风险事件' }));
+    fireEvent.click(screen.getByRole('button', { name: '资讯公告' }));
     fireEvent.click(await screen.findByRole('button', { name: '展开' }));
     expect(screen.getByRole('button', { name: '收起' })).toBeInTheDocument();
   });
@@ -238,7 +237,15 @@ describe('股票详情页：页面级 Tab 懒加载（Phase C）', () => {
       },
       data: {
         margin: null, block_trade: null, fund_flow: null,
-        northbound: { holding_shares: 8.5e7, holding_ratio: 6.8, change: -2e6 },
+        northbound: {
+          unit_note: '单位说明：持股数量为股，持股市值为元，比例为 %。',
+          current: { date: '2026-06-30', holding_shares: 8.5e7, holding_ratio: 6.8,
+                     holding_cap: 1.2e11, shares_change_q: -2e6, shares_change_y: 3e6,
+                     cap_change_q: -5e8, cap_change_y: 8e8 },
+          previous: { date: '2026-03-31', holding_shares: 8.7e7, holding_ratio: 6.9,
+                      holding_cap: 1.25e11, shares_change_q: 1e6, shares_change_y: 2e6,
+                      cap_change_q: 3e8, cap_change_y: 6e8 },
+        },
         lhb: null, chip_distribution: null,
       },
       warnings: [],
@@ -246,12 +253,14 @@ describe('股票详情页：页面级 Tab 懒加载（Phase C）', () => {
     await renderDetail();
     fireEvent.click(screen.getByRole('button', { name: '资金' }));
     expect(await screen.findByText('北向持股')).toBeInTheDocument();
-    expect(screen.getByText('持股数量')).toBeInTheDocument();
+    expect(screen.getByText('本期')).toBeInTheDocument();
+    expect(screen.getByText('上期')).toBeInTheDocument();
+    expect(screen.getAllByText('持股数量').length).toBeGreaterThanOrEqual(2); // 本期+上期
     expect(screen.getAllByText(/万股/).length).toBeGreaterThan(0); // 8.5e7 → 8500 万股
-    expect(screen.getByText('持股比例')).toBeInTheDocument();
-    expect(screen.getByText('6.80%')).toBeInTheDocument();
-    expect(screen.getByText('持股变化')).toBeInTheDocument();
-    expect(screen.getByText(/数据日期 2026-07-31/)).toBeInTheDocument();
+    expect(screen.getAllByText('6.80%').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('持股变化')).not.toBeInTheDocument(); // 旧字段不再读取
+    expect(screen.getByText(/单位说明/)).toBeInTheDocument();
+    expect(screen.getByText('2026-06-30')).toBeInTheDocument();
   });
 
   it('Intel 三分类中文元数据；category 切换只显示当前分类', async () => {
