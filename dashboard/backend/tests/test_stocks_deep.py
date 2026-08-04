@@ -61,16 +61,42 @@ def _seed_full(root: Path, symbol: str = "600519.SH", *, age_hours: float | None
     caches = {
         "profile": {"name": "贵州茅台", "industry": "白酒", "business": "茅台酒生产销售",
                     "list_date": "2001-08-27", "registered_capital": "12.56亿"},
-        "financials": {"report_date": "2026-06-30", "revenue": 8.7e10, "net_profit": 4.1e10,
-                       "roe": 16.2, "eps": 32.6,
-                       "income_statement": {"revenue": 8.7e10}, "balance_sheet": {"total_assets": 2.5e11}},
-        "forecast": {"report_date": "2026-12-31", "consensus_eps": 68.0, "consensus_revenue": 1.8e11,
-                     "rating": "买入", "target_price": 2100.0},
-        "shareholders": {"holder_count": 150000, "holder_count_change": -1200,
-                         "major_shareholders": [{"name": "贵州国资", "ratio": 54.0}],
-                         "share_structure": {"total_shares": 1.256e9, "float_shares": 1.0e9,
-                                             "restricted_shares": 2.56e8}},
-        "dividend": {"plan": "10派300元", "ex_date": "2026-07-10", "pay_date": "2026-07-14"},
+        "financials": {"code": 0, "msg": "success", "data": {"sh600519": {
+            "balance": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                         "TotalLiability": "4.0e11", "TotalShareholderEquity": "2.5e11",
+                         "CashEquivalents": "1.2e11", "BillAccReceivable": "3.2e10",
+                         "InfoPublDate": "2026-08-20 00:00:00 +0800 CST"}],
+            "cashflow": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                          "NetOperateCashFlow": "5.5e10", "NetInvestCashFlow": "-1.2e10",
+                          "NetFinanceCashFlow": "-2.5e9",
+                          "InfoPublDate": "2026-08-20 00:00:00 +0800 CST"}],
+            "income": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                        "OperatingRevenue": "8.7e10", "OperatingCost": "1.2e10",
+                        "OperatingProfit": "6.0e10", "TotalProfit": "6.1e10",
+                        "NPParentCompanyOwners": "4.1e10", "BasicEPS": "32.6",
+                        "InfoPublDate": "2026-08-20 00:00:00 +0800 CST"}],
+        }}},
+        "forecast": {"code": "sh600519", "name": "贵州茅台", "targetPrice": 2100.0,
+                     "forecasts": [{"year": 2026, "eps": 68.0, "revenue": 1.8e11,
+                                    "netProfit": 8.5e10, "pe": 20.0, "pb": 5.0, "ps": 9.0,
+                                    "revenueYoy": 5.0, "netProfitYoy": 4.0,
+                                    "institutionCnt": 12}]},
+        "shareholders": {"sh600519": {"code": "sh600519", "date": "2026-06-30",
+                                       "name": "贵州茅台",
+                                       "top10Shareholders": [
+                                           {"no": 1, "name": "贵州国资", "holdShares": 680000000,
+                                            "holdPct": 54.0, "holdChange": 0}],
+                                       "top10FloatShareholders": [
+                                           {"no": 1, "name": "贵州国资", "holdShares": 680000000,
+                                            "holdPct": 54.0, "holdChange": 0}]}},
+        "dividend": {"code": "sh600519", "start": "2025-08-04", "end": "2026-08-04",
+                     "plans": [{"cashDiviRMB": "30.00", "dividendFlag": "是",
+                                "dividendPlan": "10派300元", "dividendType": "有分红",
+                                "exDiviDate": "20260710", "procedure": "方案实施",
+                                "proposalSn": 1, "reportEndDate": "20251231",
+                                "rightRegDate": "20260709",
+                                "totalCashDiviComRMB": "1.5e10",
+                                "bonusShareRatio": "", "tranAddShareRatio": ""}]},
         "buyback": {"status": "进行中", "price_range": "1500-1800", "amount": 1.5e10},
         "margin": {"margin_balance": 1.2e10, "margin_change": 5e7,
                    "short_balance": 3e8, "short_change": -1e7},
@@ -151,9 +177,18 @@ def test_fundamentals_aggregates_profile_financials_forecast(tmp_path, config_fa
     assert body["availability"]["profile"] == "fresh"
     assert body["data"]["profile"]["name"] == "贵州茅台"
     assert body["data"]["profile"]["industry"] == "白酒"
-    assert body["data"]["financials"]["summary"]["roe"] == 16.2
-    assert body["data"]["forecast"]["rating"] == "买入"
-    assert body["data"]["forecast"]["target_price"] == 2100.0
+    fin = body["data"]["financials"]
+    assert fin["periods"][0]["report_date"] == "2026-06-30"
+    assert fin["summary"]["revenue"] == pytest.approx(8.7e10)
+    assert fin["summary"]["net_profit"] == pytest.approx(4.1e10)
+    assert fin["income_statement"]["revenue"] == pytest.approx(8.7e10)
+    assert fin["balance_sheet"]["cash"] == pytest.approx(1.2e11)
+    assert "unit_note" in fin
+    fc = body["data"]["forecast"]
+    assert fc["report_date"] == "2026"
+    assert fc["consensus_eps"] == pytest.approx(68.0)
+    assert fc["target_price"] == pytest.approx(2100.0)
+    assert fc["forecasts"][0]["net_profit"] == pytest.approx(8.5e10)
 
 
 def test_ownership_aggregates_shareholders_dividend_buyback(tmp_path, config_factory):
@@ -161,12 +196,19 @@ def test_ownership_aggregates_shareholders_dividend_buyback(tmp_path, config_fac
     _seed_full(root)
     app = _make_app(root, config_factory)
     body = _auth_get(app, "/api/stocks/600519.SH/ownership").json()
-    assert body["data"]["shareholders"]["holder_count"] == 150000
-    assert body["data"]["dividend"]["plan"] == "10派300元"
-    assert body["data"]["buyback"]["status"] == "进行中"
-    assert body["data"]["shareholders"]["share_structure"] == {
-        "total_shares": 1.256e9, "float_shares": 1.0e9, "restricted_shares": 2.56e8,
+    sh = body["data"]["shareholders"]
+    assert sh["date"] == "2026-06-30"
+    assert sh["major_shareholders"][0] == {
+        "rank": 1, "name": "贵州国资", "shares": 680000000, "ratio": 54.0, "change": 0.0,
     }
+    assert sh["float_shareholders"][0]["name"] == "贵州国资"
+    assert "holder_count" not in sh and "share_structure" not in sh
+    dv = body["data"]["dividend"]
+    assert dv["plans"][0]["plan"] == "10派300元"
+    assert dv["plan"] == "10派300元"  # 兼容字段
+    assert dv["ex_date"] == "2026-07-10"
+    assert "pay_date" not in dv  # 不伪造
+    assert body["data"]["buyback"]["status"] == "进行中"
 
 
 def test_funds_aggregates_six_capabilities(tmp_path, config_factory):

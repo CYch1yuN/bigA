@@ -56,11 +56,13 @@ def test_nested_unknown_keys_dropped(tmp_path, config_factory):
     """股东/股本/技术指标的未知嵌套键全部丢弃，仅保留白名单字段。"""
     root = tmp_path / "repo"
     _write_cache(root, "shareholders", "600519.SH", {
-        "holder_count": 100,
-        "major_shareholders": [
-            {"name": "股东A", "ratio": 50.0, "hacked": "x", "odd": {"deep": 1}},
-        ],
-        "share_structure": {"a_shares": 1.0, "unknown_key": 99},
+        "sh600519": {"code": "sh600519", "date": "2026-06-30", "name": "贵州茅台",
+                     "top10Shareholders": [
+                         {"no": 1, "name": "股东A", "holdShares": 1000000,
+                          "holdPct": 50.0, "holdChange": 0, "hacked": "x",
+                          "odd": {"deep": 1}},
+                     ],
+                     "top10FloatShareholders": []},
     })
     _write_cache(root, "technical", "600519.SH", {
         "sh600519": {
@@ -74,8 +76,11 @@ def test_nested_unknown_keys_dropped(tmp_path, config_factory):
 
     own = _auth_get(app, "/api/stocks/600519.SH/ownership").json()
     sh = own["data"]["shareholders"]
-    assert sh["major_shareholders"] == [{"name": "股东A", "ratio": 50.0}]
-    assert "share_structure" not in sh  # a_shares/unknown_key 均不在白名单 → 整个丢弃
+    assert sh["major_shareholders"] == [
+        {"rank": 1, "name": "股东A", "shares": 1000000, "ratio": 50.0, "change": 0.0},
+    ]
+    assert "hacked" not in sh["major_shareholders"][0]
+    assert "holder_count" not in sh and "share_structure" not in sh  # 不伪造
 
     tech = _auth_get(app, "/api/stocks/600519.SH/technical").json()
     ind = tech["data"]["indicators"]
@@ -88,29 +93,37 @@ def test_financial_sheets_whitelist_only(tmp_path, config_factory):
     """三张报表只输出明确字段，任意 key 动态输出被禁止。"""
     root = tmp_path / "repo"
     _write_cache(root, "financials", "600519.SH", {
-        "report_date": "2026-06-30", "roe": 16.2,
-        "income_statement": {"revenue": 1.0, "net_profit": 2.0, "任意键": 99},
-        "balance_sheet": {"total_assets": 3.0, "hacked": 4.0},
+        "code": 0, "msg": "success", "data": {"sh600519": {
+            "balance": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                         "CashEquivalents": "1.0", "hacked": 4.0}],
+            "cashflow": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                          "NetOperateCashFlow": "5.0"}],
+            "income": [{"SecuCode": "sh600519", "EndDate": "2026-06-30",
+                        "OperatingRevenue": 1.0, "NPParentCompanyOwners": 2.0,
+                        "任意键": 99}],
+        }},
     })
     app = _make_app(root, config_factory)
     fin = _auth_get(app, "/api/stocks/600519.SH/fundamentals").json()["data"]["financials"]
     assert fin["income_statement"] == {"revenue": 1.0, "net_profit": 2.0}
     assert "任意键" not in fin["income_statement"]
-    assert fin["balance_sheet"] == {"total_assets": 3.0}
+    assert fin["balance_sheet"] == {"cash": 1.0}
     assert "hacked" not in fin["balance_sheet"]
+    assert fin["cash_flow"] == {"operating_cash_flow": 5.0}
 
 
 def test_nan_infinity_dropped(tmp_path, config_factory):
     root = tmp_path / "repo"
     _write_cache(root, "forecast", "600519.SH", {
-        "report_date": "2026-12-31", "target_price": float("nan"), "consensus_eps": float("inf"),
-        "rating": "买入",
+        "code": "sh600519", "name": "贵州茅台", "targetPrice": float("nan"),
+        "forecasts": [{"year": 2026, "eps": float("inf"), "revenue": 1.0}],
     })
     app = _make_app(root, config_factory)
     fc = _auth_get(app, "/api/stocks/600519.SH/fundamentals").json()["data"]["forecast"]
     assert "target_price" not in fc  # NaN 丢弃
     assert "consensus_eps" not in fc  # Infinity 丢弃
-    assert fc["rating"] == "买入"
+    assert "eps" not in fc["forecasts"][0]  # 数值字段 Infinity 不输出
+    assert fc["forecasts"][0]["revenue"] == 1.0
 
 
 # ---------------------------------------------------------------------- #
@@ -145,7 +158,11 @@ def test_long_text_trimmed(tmp_path, config_factory):
 def test_shareholder_and_chip_limits(tmp_path, config_factory):
     root = tmp_path / "repo"
     _write_cache(root, "shareholders", "600519.SH", {
-        "major_shareholders": [{"name": f"股东{i}", "ratio": i} for i in range(25)],
+        "sh600519": {"code": "sh600519", "date": "2026-06-30", "name": "贵州茅台",
+                     "top10Shareholders": [
+                         {"no": i, "name": f"股东{i}", "holdShares": i * 1000,
+                          "holdPct": float(i), "holdChange": 0} for i in range(1, 26)],
+                     "top10FloatShareholders": []},
     })
     _write_cache(root, "chip_distribution", "600519.SH", {
         "concentration": 0.5,
@@ -153,11 +170,12 @@ def test_shareholder_and_chip_limits(tmp_path, config_factory):
     })
     app = _make_app(root, config_factory)
     own = _auth_get(app, "/api/stocks/600519.SH/ownership").json()
-    assert len(own["data"]["shareholders"]["major_shareholders"]) == 20  # 上限 20
+    assert len(own["data"]["shareholders"]["major_shareholders"]) == 10  # 单列表上限 10
+    assert any("裁剪" in w for w in own["warnings"])
     funds = _auth_get(app, "/api/stocks/600519.SH/funds").json()
     chip = funds["data"]["chip_distribution"]
     assert len(chip["distribution"]) == 50  # 上限 50
-    assert any("裁剪" in w for w in own["warnings"] + funds["warnings"])
+    assert any("裁剪" in w for w in funds["warnings"])
 
 
 # ---------------------------------------------------------------------- #

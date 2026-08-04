@@ -399,28 +399,248 @@ def _norm_share_structure(data: Any) -> dict[str, Any] | None:
     return out or None
 
 
-def _norm_financials(data: Any) -> tuple[Any, str | None]:
-    """财务：摘要（标量白名单）+ 三张报表（强制字段 schema）。"""
+_FIN_PERIOD_LIMIT = 12
+_FORECAST_LIMIT = 30
+_DIVIDEND_LIMIT = 100
+_SH_LIST_LIMIT = 10
+_SH_TOTAL_LIMIT = 20
+_FIN_UNIT_NOTE = ("财务金额单位按字段语义推断为元，源响应未提供独立单位声明；未执行单位换算。")
+
+
+def _norm_fin_num(value: Any) -> float | None:
+    """F2-B 数值校验：拒绝 bool/NaN/Infinity/dict/list；接受 finite 数值与数值字符串。"""
+    if isinstance(value, bool):
+        return None
+    return _as_finite_float(value)
+
+
+def _parse_yyyymmdd(value: Any) -> str | None:
+    """严格 YYYYMMDD → YYYY-MM-DD；非法 None。"""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{8}", value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y%m%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _norm_info_published_at(value: Any) -> str | None:
+    """InfoPublDate：`YYYY-MM-DD HH:MM:SS +0800 CST` → ISO 8601 带偏移；非法 None。"""
+    if not isinstance(value, str):
+        return None
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ([+-]\d{4}) [A-Z]{2,5}",
+                     value.strip())
+    if not m:
+        return None
+    try:
+        dt = datetime.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M:%S %z")
+    except ValueError:
+        return None
+    return dt.isoformat()
+
+
+def _norm_fin_sheet_row(sheet: str, row: Any, symbol: str):
+    """财务报表单行标准化。
+
+    返回 (end_date, slot, body, published) 或 None（SecuCode 缺失/非法/错配、
+    EndDate 非法、无受控字段）。PascalCase 科目按白名单映射，金额原样（不换算）。
+    """
+    if not isinstance(row, dict):
+        return None
+    secu = row.get("SecuCode")
+    if not isinstance(secu, str) or identity_violation(symbol, secu):
+        return None
+    end = row.get("EndDate")
+    if not isinstance(end, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
+        return None
+    try:
+        datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return None
+    published = _norm_info_published_at(row.get("InfoPublDate"))
+    body: dict[str, Any] = {}
+    if sheet == "income":
+        for src, dst in (("OperatingRevenue", "revenue"), ("OperatingCost", "cost"),
+                         ("OperatingProfit", "operating_profit"), ("TotalProfit", "total_profit"),
+                         ("NPParentCompanyOwners", "net_profit")):
+            num = _norm_fin_num(row.get(src))
+            if num is not None:
+                body[dst] = num
+        eps = _norm_fin_num(row.get("BasicEPS"))
+        if eps is not None:
+            body["eps"] = eps
+        if not body:
+            return None
+        return end, "income_statement", body, published
+    if sheet == "balance":
+        for src, dst in (("TotalLiability", "total_liabilities"),
+                         ("TotalShareholderEquity", "equity"),
+                         ("CashEquivalents", "cash"),
+                         ("BillAccReceivable", "bills_and_accounts_receivable")):
+            num = _norm_fin_num(row.get(src))
+            if num is not None:
+                body[dst] = num
+        if not body:
+            return None
+        return end, "balance_sheet", body, published
+    # cashflow
+    for src, dst in (("NetOperateCashFlow", "operating_cash_flow"),
+                     ("NetInvestCashFlow", "investing_cash_flow"),
+                     ("NetFinanceCashFlow", "financing_cash_flow")):
+        num = _norm_fin_num(row.get(src))
+        if num is not None:
+            body[dst] = num
+    if not body:
+        return None
+    return end, "cash_flow", body, published
+
+
+def _norm_financials(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """financials 真实结构校准（F2-B）。
+
+    双层包装：data.code 必须严格为数值 0；data.data 为严格单股票 wrapper；
+    行内 SecuCode 必须存在合法一致（错配/非法行丢弃计数）；
+    三表按 EndDate 合并为 periods（最多 12 期、倒序、同报告期保留最后一条）；
+    输出 periods + 最新一期兼容字段 + unit_note。
+    """
     if not isinstance(data, dict):
         return None, "非对象"
-    summary = _norm_mapping(data, _FINANCIAL_SUMMARY_FIELDS)
-    out: dict[str, Any] = {}
-    if summary:
-        out["summary"] = summary
-    for sheet, fields in _SHEET_FIELDS.items():
-        raw = _pick(data, (sheet, f"{sheet}_summary"))
-        if not isinstance(raw, dict):
+    status_code = data.get("code")
+    if isinstance(status_code, bool) or not isinstance(status_code, (int, float)) \
+            or status_code != 0:
+        return None, "响应状态码非法"
+    inner = data.get("data")
+    payload = unwrap_strict_westock_payload(inner if isinstance(inner, dict) else None, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    invalid = 0
+    periods: dict[str, dict[str, Any]] = {}
+    for sheet in ("income", "balance", "cashflow"):
+        rows = payload.get(sheet)
+        if not isinstance(rows, list):
             continue
-        normalized: dict[str, Any] = {}
-        for field in fields:
-            if field in raw and raw[field] is not None:
-                number = _as_finite_float(raw[field])
-                if number is not None:
-                    normalized[field] = number
-        if normalized:
-            out[sheet] = normalized
-    if not out:
+        if len(rows) > _FIN_PERIOD_LIMIT:
+            warnings.append(f"financials 报表超过 {_FIN_PERIOD_LIMIT} 期上限，已裁剪")
+            rows = rows[: _FIN_PERIOD_LIMIT]
+        for row in rows:
+            parsed = _norm_fin_sheet_row(sheet, row, symbol)
+            if parsed is None:
+                invalid += 1
+                continue
+            end, slot, body, published = parsed
+            period = periods.setdefault(end, {"report_date": end})
+            if published and "info_published_at" not in period:
+                period["info_published_at"] = published
+            if slot == "income_statement":
+                period["summary"] = {"report_date": end,
+                                     "revenue": body.get("revenue"),
+                                     "net_profit": body.get("net_profit"),
+                                     "eps": body.get("eps")}
+            period[slot] = body
+    if invalid:
+        warnings.append(f"financials 含 {invalid} 行身份不匹配或非法记录，已丢弃")
+    if not periods:
         return None, "缺少受控财务字段"
+    ordered = [periods[d] for d in sorted(periods, reverse=True)]
+    if len(ordered) > _FIN_PERIOD_LIMIT:
+        warnings.append(f"financials 合并后超过 {_FIN_PERIOD_LIMIT} 期上限，已裁剪")
+        ordered = ordered[: _FIN_PERIOD_LIMIT]
+    latest = ordered[0]
+    return {
+        "periods": ordered,
+        "summary": latest.get("summary"),
+        "income_statement": latest.get("income_statement"),
+        "balance_sheet": latest.get("balance_sheet"),
+        "cash_flow": latest.get("cash_flow"),
+        "unit_note": _FIN_UNIT_NOTE,
+    }, None
+
+
+def _norm_forecast_row(row: Any) -> dict[str, Any] | None:
+    """forecast 单行：year 必须整数 2000–2100，且除 year 外至少一个合法指标。
+
+    institutionCnt 必须为非负整数（bool 拒绝），输出 int。
+    """
+    if not isinstance(row, dict):
+        return None
+    year = row.get("year")
+    if isinstance(year, bool) or not isinstance(year, int) or not (2000 <= year <= 2100):
+        return None
+    out: dict[str, Any] = {"year": year}
+    for src, dst in (("eps", "eps"), ("revenue", "revenue"), ("netProfit", "net_profit"),
+                     ("pe", "pe"), ("pb", "pb"), ("ps", "ps"),
+                     ("revenueYoy", "revenue_yoy"), ("netProfitYoy", "net_profit_yoy")):
+        num = _norm_fin_num(row.get(src))
+        if num is not None:
+            out[dst] = num
+    inst = row.get("institutionCnt")
+    if isinstance(inst, bool) or not isinstance(inst, int) or inst < 0:
+        pass  # institutionCnt 非法 → 不输出（不整行丢弃）
+    else:
+        out["institution_count"] = inst  # int 原样输出
+    if len(out) <= 1:
+        return None  # year-only 行丢弃
+    return out
+
+
+def _norm_forecast(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """forecast 真实结构校准（F2-B）。
+
+    顶层 code 必须存在合法一致；forecasts ≤30；每行须含 year 之外的指标；
+    institutionCnt 非负整数输出 int；非法行/重复 year 计数 warning；
+    同 year 保留最后、按 year 升序；target_price ← targetPrice（>0 才收）；
+    摘要取最小 year；仅 target_price 可用时允许 target-only 输出。
+    """
+    if not isinstance(data, dict):
+        return None, "非对象"
+    code = data.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    target_price: float | None = None
+    if "targetPrice" in data:
+        tp = _norm_fin_num(data.get("targetPrice"))
+        if tp is None or tp <= 0:
+            warnings.append("forecast targetPrice 非法，已丢弃")
+        else:
+            target_price = tp
+    raw_rows = data.get("forecasts")
+    if not isinstance(raw_rows, list):
+        raw_rows = []
+    if len(raw_rows) > _FORECAST_LIMIT:
+        warnings.append(f"forecast 超过 {_FORECAST_LIMIT} 条上限，已裁剪")
+        raw_rows = raw_rows[: _FORECAST_LIMIT]
+    by_year: dict[int, dict[str, Any]] = {}
+    invalid = 0
+    duplicates = 0
+    seen_years: set[int] = set()
+    for row in raw_rows:
+        norm = _norm_forecast_row(row)
+        if norm is None:
+            invalid += 1
+            continue
+        year = norm["year"]
+        if year in seen_years:
+            duplicates += 1
+        else:
+            seen_years.add(year)
+        by_year[year] = norm  # 同 year 保留最后
+    if invalid:
+        warnings.append(f"forecast 含 {invalid} 行非法记录，已丢弃")
+    if duplicates:
+        warnings.append(f"forecast 含 {duplicates} 个重复年度，保留最后有效值")
+    rows = [by_year[y] for y in sorted(by_year)]
+    if not rows and target_price is None:
+        return None, "缺少受控预期字段"
+    out: dict[str, Any] = {"forecasts": rows}
+    if rows:
+        first = rows[0]  # 最小 year
+        out["report_date"] = str(first["year"])
+        if first.get("eps") is not None:
+            out["consensus_eps"] = first["eps"]
+        if first.get("revenue") is not None:
+            out["consensus_revenue"] = first["revenue"]
+    if target_price is not None:
+        out["target_price"] = target_price
     return out, None
 
 
@@ -694,7 +914,8 @@ class StocksDeepService:
 
     def _cap_with_norm(self, capability: str, symbol: str, normalize,
                        warnings: list[str],
-                       identity_checker=None) -> tuple[Any, str, dict[str, Any] | None]:
+                       identity_checker=None,
+                       as_of_provider=None) -> tuple[Any, str, dict[str, Any] | None]:
         envelope, status = self._cap(capability, symbol)
         meta = self._capability_meta(capability, symbol)
         if envelope is None or status == "unavailable":
@@ -713,6 +934,11 @@ class StocksDeepService:
                 f"{capability} 缓存结构无法标准化（{reason or '无可识别字段'}），已降级为不可用"
             )
             return None, "unavailable", meta
+        if as_of_provider is not None:
+            derived = as_of_provider(normalized)
+            if derived and meta is not None:
+                meta = dict(meta)
+                meta["as_of"] = derived
         return normalized, status, meta
 
     # ------------------------------------------------------------------ #
@@ -734,13 +960,18 @@ class StocksDeepService:
         meta["profile"] = m
 
         financials, status, m = self._cap_with_norm(
-            "financials", symbol, _norm_financials, warnings)
+            "financials", symbol, lambda d: _norm_financials(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n["periods"][0]["report_date"] if n and n.get("periods") else None))
         status_map["financials"] = status
         data["financials"] = financials
         meta["financials"] = m
 
+        # forecast：year 不得作为 as_of——成功标准化后清除缓存回显 as_of，不参与聚合日期
         forecast, status, m = self._cap_with_norm(
-            "forecast", symbol, lambda d: (_norm_mapping(d, _FORECAST_FIELDS), None), warnings)
+            "forecast", symbol, lambda d: _norm_forecast(d, symbol, warnings), warnings)
+        if m is not None:
+            m = dict(m)
+            m["as_of"] = None
         status_map["forecast"] = status
         data["forecast"] = forecast
         meta["forecast"] = m
@@ -758,22 +989,35 @@ class StocksDeepService:
 
         shareholders, status, m = self._cap_with_norm(
             "shareholders", symbol,
-            lambda d: (_norm_shareholders(d, warnings), None), warnings)
+            lambda d: _norm_shareholders(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n.get("date") if n else None))
         status_map["shareholders"] = status
         data["shareholders"] = shareholders
         meta["shareholders"] = m
 
         dividend, status, m = self._cap_with_norm(
-            "dividend", symbol, lambda d: (_norm_mapping(d, _DIVIDEND_FIELDS), None), warnings)
+            "dividend", symbol, lambda d: _norm_dividend(d, symbol, warnings), warnings,
+            as_of_provider=lambda n: (n["plans"][0]["report_date"] if n and n.get("plans") else None))
         status_map["dividend"] = status
         data["dividend"] = dividend
         meta["dividend"] = m
 
-        buyback, status, m = self._cap_with_norm(
-            "buyback", symbol, lambda d: (_norm_mapping(d, _BUYBACK_FIELDS), None), warnings)
-        status_map["buyback"] = status
-        data["buyback"] = buyback
-        meta["buyback"] = m
+        # buyback：supported-but-empty（无缓存/无 data/空对象/空列表 → unavailable + 固定 warning）
+        buyback_env, b_status = self._cap("buyback", symbol)
+        meta["buyback"] = self._capability_meta("buyback", symbol)
+        if buyback_env is None or b_status == "unavailable":
+            status_map["buyback"] = "unavailable"
+            data["buyback"] = None
+            warnings.append("当前缓存未包含回购记录")
+        else:
+            bb = _norm_mapping(buyback_env.get("data"), _BUYBACK_FIELDS)
+            if bb:
+                status_map["buyback"] = b_status
+                data["buyback"] = bb
+            else:
+                status_map["buyback"] = "unavailable"
+                data["buyback"] = None
+                warnings.append("当前缓存未包含回购记录")
         return self._envelope(symbol, status_map, data, warnings, meta)
 
     # ------------------------------------------------------------------ #
@@ -926,28 +1170,159 @@ class StocksDeepService:
         return self._envelope(symbol, status_map, data, warnings, {"technical": meta})
 
 
-def _norm_shareholders(data: Any, warnings: list[str]) -> dict[str, Any] | None:
-    """股东：holder_count 标量 + 股本结构强制 schema + 主要股东强制 schema（≤20）。"""
-    if not isinstance(data, dict):
+def _norm_shareholder_row(row: Any) -> dict[str, Any] | None:
+    """股东行：no 正整数、name 非空；shares/ratio/change 存在即必须 finite（非法整行丢弃）。"""
+    if not isinstance(row, dict):
         return None
-    out: dict[str, Any] = {}
-    holder_count = _pick(data, ("holder_count", "total_holders"))
-    if holder_count is not None:
-        number = _as_finite_float(holder_count)
-        if number is not None:
-            out["holder_count"] = number
-    change = _pick(data, ("holder_count_change", "holder_change"))
-    if change is not None:
-        number = _as_finite_float(change)
-        if number is not None:
-            out["holder_count_change"] = number
-    structure = _norm_share_structure(data)
-    if structure:
-        out["share_structure"] = structure
-    shareholders = _norm_major_shareholders(data, warnings)
-    if shareholders:
-        out["major_shareholders"] = shareholders
-    return out or None
+    rank = row.get("no")
+    if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
+        return None
+    name = row.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    out: dict[str, Any] = {"rank": rank, "name": name.strip()[:MAX_TITLE]}
+    for src, dst in (("holdShares", "shares"), ("holdPct", "ratio"), ("holdChange", "change")):
+        val = row.get(src)
+        if val is None:
+            continue
+        num = _norm_fin_num(val)
+        if num is None:
+            return None  # 数值非法 → 整行丢弃
+        out[dst] = num
+    return out
+
+
+def _norm_shareholders(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """shareholders 真实结构校准（F2-B）。
+
+    严格 wrapper + 内层 code 必须存在一致；date 严格 YYYY-MM-DD（非法 unavailable）；
+    top10Shareholders/top10FloatShareholders 各 ≤10、总计 ≤20；
+    输出 date/major_shareholders/float_shareholders；不伪造 holder_count 等。
+    """
+    payload = unwrap_strict_westock_payload(data, symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    raw_date = payload.get("date")
+    if not isinstance(raw_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date):
+        return None, "日期非法"
+    try:
+        datetime.strptime(raw_date, "%Y-%m-%d")
+    except ValueError:
+        return None, "日期非法"
+    invalid = 0
+
+    def _list(rows: Any) -> list[dict[str, Any]]:
+        nonlocal invalid
+        if not isinstance(rows, list):
+            return []
+        out_list: list[dict[str, Any]] = []
+        for row in rows:
+            norm = _norm_shareholder_row(row)
+            if norm is None:
+                invalid += 1
+                continue
+            out_list.append(norm)
+        if len(out_list) > _SH_LIST_LIMIT:
+            warnings.append(f"shareholders 单列表超过 {_SH_LIST_LIMIT} 条上限，已裁剪")
+            out_list = out_list[: _SH_LIST_LIMIT]
+        return out_list
+
+    major = _list(payload.get("top10Shareholders"))
+    floats = _list(payload.get("top10FloatShareholders"))
+    if invalid:
+        warnings.append(f"shareholders 含 {invalid} 行非法记录，已丢弃")
+    if not major and not floats:
+        return None, "缺少受控股东字段"
+    out: dict[str, Any] = {"date": raw_date}
+    if major:
+        out["major_shareholders"] = major
+    if floats:
+        out["float_shareholders"] = floats
+    return out, None
+
+
+def _norm_dividend_row(row: Any) -> dict[str, Any] | None:
+    """dividend 行：report_date/proposal_sn 为身份与排序字段；
+    至少还需一个受控业务字段（plan/ex_date/registration_date/金额/比例/procedure/flag/type）
+    才算有效计划；空壳计划返回 None。"""
+    if not isinstance(row, dict):
+        return None
+    report_date = _parse_yyyymmdd(row.get("reportEndDate"))
+    if report_date is None:
+        return None
+    sn = row.get("proposalSn")
+    if isinstance(sn, bool) or not isinstance(sn, int):
+        return None
+    out: dict[str, Any] = {"report_date": report_date, "proposal_sn": sn}
+    plan = row.get("dividendPlan")
+    if isinstance(plan, str) and plan.strip():
+        out["plan"] = plan.strip()[:MAX_TITLE]
+    for src, dst in (("exDiviDate", "ex_date"), ("rightRegDate", "registration_date")):
+        d = _parse_yyyymmdd(row.get(src))
+        if d:
+            out[dst] = d
+    for src, dst in (("cashDiviRMB", "cash_per_10_shares"),
+                     ("totalCashDiviComRMB", "total_cash"),
+                     ("bonusShareRatio", "bonus_share_ratio"),
+                     ("tranAddShareRatio", "transfer_share_ratio")):
+        val = row.get(src)
+        if isinstance(val, str) and not val.strip():
+            continue  # 空字符串 → 省略
+        num = _norm_fin_num(val)
+        if num is not None:
+            out[dst] = num
+    procedure = row.get("procedure")
+    if isinstance(procedure, str) and procedure.strip():
+        out["procedure"] = procedure.strip()[:MAX_TEXT]
+    for src, dst in (("dividendFlag", "dividend_flag"), ("dividendType", "dividend_type")):
+        val = row.get(src)
+        if isinstance(val, str) and val.strip():
+            out[dst] = val.strip()[:MAX_TEXT]
+    if len(out) <= 2:
+        return None  # 仅身份/排序字段 → 空壳计划丢弃
+    return out
+
+
+def _norm_dividend(data: Any, symbol: str, warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """dividend 真实结构校准（F2-B）。
+
+    顶层 code 必须存在合法一致；plans ≤100；report_date 倒序、proposal_sn 稳定；
+    输出 plans + 最新计划兼容字段（plan/ex_date/registration_date；pay_date 不伪造）。
+    """
+    if not isinstance(data, dict):
+        return None, "非对象"
+    code = data.get("code")
+    if not isinstance(code, str) or identity_violation(symbol, code):
+        return None, "code 与请求标的不一致"
+    raw_rows = data.get("plans")
+    if not isinstance(raw_rows, list):
+        raw_rows = []
+    if len(raw_rows) > _DIVIDEND_LIMIT:
+        warnings.append(f"dividend 超过 {_DIVIDEND_LIMIT} 条上限，已裁剪")
+        raw_rows = raw_rows[: _DIVIDEND_LIMIT]
+    plans: list[dict[str, Any]] = []
+    invalid = 0
+    for row in raw_rows:
+        norm = _norm_dividend_row(row)
+        if norm is None:
+            invalid += 1
+            continue
+        plans.append(norm)
+    if invalid:
+        warnings.append(f"dividend 含 {invalid} 条非法计划，已丢弃")
+    if not plans:
+        return None, "缺少受控分红字段"
+    plans.sort(key=lambda p: p.get("proposal_sn") or 0)
+    plans.sort(key=lambda p: p.get("report_date") or "", reverse=True)  # 稳定保留 proposal_sn 序
+    latest = plans[0]
+    out: dict[str, Any] = {"plans": plans}
+    for key in ("plan", "ex_date", "registration_date"):
+        if latest.get(key) is not None:
+            out[key] = latest[key]
+    return out, None
 
 
 def build_stocks_deep_service(project_root: Any) -> StocksDeepService:
