@@ -15,6 +15,7 @@ import { WestockConnectionPage } from './pages/WestockConnectionPage';
 import { StockListPage } from './pages/StockListPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { MarketIndexesPage, MarketOverviewPage, MarketSectorsPage } from './pages/MarketPages';
+import { ScreenerPage, ScreenerResultPage } from './pages/ScreenerPages';
 
 function ProtectedLayout() {
   const { session, loading } = useAuth();
@@ -45,6 +46,8 @@ export default function App() {
         <Route path="/market" element={<MarketOverviewPage />} />
         <Route path="/market/sectors" element={<MarketSectorsPage />} />
         <Route path="/market/indexes" element={<MarketIndexesPage />} />
+        <Route path="/screener" element={<ScreenerPage />} />
+        <Route path="/screener/results/:id" element={<ScreenerResultPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

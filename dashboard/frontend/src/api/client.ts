@@ -441,6 +441,41 @@ export interface MarketEventsResponse extends DeepBaseResponse { data: {
   total: number;
 } }
 
+// ---- Phase E：选股中心类型 ----
+
+export type ScreenerMode = 'condition' | 'strategy' | 'factor' | 'label';
+export interface ScreenerUniverse { type: 'local' | 'index' | 'sector' | 'industry_chain'; value: string | null; }
+export interface ScreenerCondition { field: string; operator: string; value: unknown; }
+export interface ScreenerQuery {
+  mode: ScreenerMode;
+  universe: ScreenerUniverse;
+  conditions: ScreenerCondition[];
+  strategy: Record<string, unknown> | null;
+  factor: Record<string, unknown> | null;
+  labels: { values: string[]; match: string } | null;
+  sort: { field: string; direction: string };
+  limit: number;
+}
+export interface ScreenerRow {
+  symbol?: string; name?: string; score?: number; rank?: number; price?: number;
+  change_percent?: number; industry?: string; sector?: string; reason?: string;
+  matched_conditions?: string[]; matched_labels?: string[]; factor_values?: Record<string, number>;
+  local_history_available?: boolean;
+}
+export interface ScreenerRunResponse {
+  ok: boolean; schema_version: number; result_id: string; mode: ScreenerMode;
+  source: string; as_of: string | null; source_fetched_at: string | null; generated_at: string;
+  cache_status: string; is_realtime: boolean; transport: string;
+  availability: Record<string, string>; query: ScreenerQuery;
+  data: { items: ScreenerRow[]; total: number }; warnings: string[];
+  cache_scope: string;
+}
+export interface SavedFilter { id: string; name: string; query: ScreenerQuery; created_at: string; updated_at: string; }
+export interface Candidate {
+  symbol: string; name?: string; source_result_id: string; note?: string;
+  added_at: string; local_history_available?: boolean;
+}
+
 export interface JobPrepareResponse {
   ok: boolean;
   job_type: JobType;
@@ -581,4 +616,13 @@ export const api = {
   },
   marketFunds: () => request<MarketFundsResponse>('/api/market/funds'),
   marketEvents: () => request<MarketEventsResponse>('/api/market/events'),
+  // ---- Phase E：选股中心 ----
+  screenerRun: (query: ScreenerQuery) => request<ScreenerRunResponse>('/api/screener/run', { method: 'POST', body: JSON.stringify(query) }),
+  screenerResult: (resultId: string) => request<ScreenerRunResponse>(`/api/screener/results/${encodeURIComponent(resultId)}`),
+  screenerSavedList: () => request<{ ok: boolean; items: SavedFilter[] }>('/api/screener/saved'),
+  screenerSavedCreate: (payload: { name: string; query: ScreenerQuery }) => request<{ ok: boolean; saved_id: string; name: string }>('/api/screener/saved', { method: 'POST', body: JSON.stringify(payload) }),
+  screenerSavedDelete: (savedId: string) => request<{ ok: boolean; deleted: string }>(`/api/screener/saved/${encodeURIComponent(savedId)}`, { method: 'DELETE' }),
+  screenerCandidatesList: () => request<{ ok: boolean; items: Candidate[]; note: string }>('/api/screener/candidates'),
+  screenerCandidatesAdd: (payload: { symbol: string; source_result_id: string; note?: string }) => request<{ ok: boolean; symbol: string; added: boolean }>('/api/screener/candidates', { method: 'POST', body: JSON.stringify(payload) }),
+  screenerCandidatesDelete: (symbol: string) => request<{ ok: boolean; deleted: string }>(`/api/screener/candidates/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
 };

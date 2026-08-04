@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from .jobs import (
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
 from .market_service import MarketService, build_market_service
+from .screener_service import MAX_BODY_BYTES, ScreenerError, ScreenerService, build_screener_service
 from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
@@ -67,10 +69,16 @@ def _host_allowed(host_header: str, config: DashboardConfig) -> bool:
     return False
 
 
-async def _parse_json(request: Request) -> dict[str, Any]:
-    """安全解析 JSON 请求体，失败返回空 dict。"""
+async def _parse_json(request: Request, *, max_bytes: int | None = None) -> dict[str, Any]:
+    """安全解析 JSON 请求体，失败返回空 dict；max_bytes 超限返回空 dict。"""
     try:
-        body = await request.json()
+        if max_bytes is not None:
+            raw = await request.body()
+            if len(raw) > max_bytes:
+                return {}
+            body = json.loads(raw)
+        else:
+            body = await request.json()
         if isinstance(body, dict):
             return body
     except Exception:
@@ -134,6 +142,7 @@ def create_app(
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
     app.state.market: MarketService = build_market_service(root)
+    app.state.screener: ScreenerService = build_screener_service(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -487,6 +496,72 @@ def create_app(
     async def market_events(request: Request) -> JSONResponse:
         await _require_session(request, security, csrf_required=False)
         return JSONResponse(app.state.market.events())
+
+    # ---------- Phase E：选股中心（只读研究工作台） ----------
+
+    def _screener_error(exc: ScreenerError) -> JSONResponse:
+        return JSONResponse(error_body(exc.code, exc.message), status_code=exc.status_code)
+
+    @app.post("/api/screener/run")
+    async def screener_run(request: Request) -> JSONResponse:
+        session = await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request, max_bytes=MAX_BODY_BYTES)
+        try:
+            return JSONResponse(app.state.screener.run(session.sid, body))
+        except ScreenerError as exc:
+            return _screener_error(exc)
+
+    @app.get("/api/screener/results/{result_id}")
+    async def screener_result(result_id: str, request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(app.state.screener.get_result(result_id))
+        except ScreenerError as exc:
+            return _screener_error(exc)
+
+    @app.get("/api/screener/saved")
+    async def screener_saved_list(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.screener.list_saved())
+
+    @app.post("/api/screener/saved")
+    async def screener_saved_create(request: Request) -> JSONResponse:
+        session = await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request, max_bytes=MAX_BODY_BYTES)
+        try:
+            return JSONResponse(app.state.screener.save_filter(body))
+        except ScreenerError as exc:
+            return _screener_error(exc)
+
+    @app.delete("/api/screener/saved/{saved_id}")
+    async def screener_saved_delete(saved_id: str, request: Request) -> JSONResponse:
+        session = await _require_session(request, security, csrf_required=True)
+        try:
+            return JSONResponse(app.state.screener.delete_saved(saved_id))
+        except ScreenerError as exc:
+            return _screener_error(exc)
+
+    @app.get("/api/screener/candidates")
+    async def screener_candidates_list(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        return JSONResponse(app.state.screener.list_candidates())
+
+    @app.post("/api/screener/candidates")
+    async def screener_candidates_add(request: Request) -> JSONResponse:
+        session = await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request, max_bytes=MAX_BODY_BYTES)
+        try:
+            return JSONResponse(app.state.screener.add_candidate(body))
+        except ScreenerError as exc:
+            return _screener_error(exc)
+
+    @app.delete("/api/screener/candidates/{symbol}")
+    async def screener_candidates_delete(symbol: str, request: Request) -> JSONResponse:
+        session = await _require_session(request, security, csrf_required=True)
+        try:
+            return JSONResponse(app.state.screener.delete_candidate(symbol))
+        except ScreenerError as exc:
+            return _screener_error(exc)
 
     @app.post("/api/actions/prepare")
     async def actions_prepare(request: Request) -> JSONResponse:

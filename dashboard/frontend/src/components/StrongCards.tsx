@@ -46,6 +46,24 @@ export function fmtText(value: unknown): string {
   return s;
 }
 
+/** 统一安全时间格式：ISO → Asia/Shanghai YYYY-MM-DD HH:mm:ss；null/非法值 → '—'。
+ * 禁止 slice(0,19) 直出（会把 UTC 时间当成本地时间展示）。 */
+export function fmtIsoTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).format(d).replace(/\//g, '-');
+  } catch {
+    return '—';
+  }
+}
+
 const STATUS_TEXT: Record<DeepCapabilityStatus, string> = {
   fresh: '新鲜', stale: '已过期', unavailable: '无缓存',
 };

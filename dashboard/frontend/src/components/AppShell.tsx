@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/settings', label: '系统设置', icon: '⚙' },
   { to: '/stocks', label: '股票行情', icon: 'K' },
   { to: '/market', label: '市场研究', icon: 'M' },
+  { to: '/screener', label: '选股中心', icon: 'S' },
   { to: '/connections/westock', label: 'Westock 连接', icon: 'W' },
 ];
 

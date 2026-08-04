@@ -845,3 +845,30 @@ h4 {
 .market-calendar-table th {
   white-space: nowrap;
 }
+
+/* ---- Phase E 第五轮：移动端 390×844 横向溢出修复 ----
+   禁止隐藏/截断 cache_scope；完整展示但允许任意位置换行。 */
+.deep-fields-inline {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.deep-fields-inline > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.deep-chip {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.alert {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.section-card {
+  min-width: 0;
+  max-width: 100%;
+}
