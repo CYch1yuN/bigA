@@ -91,10 +91,14 @@ def _seed_full(root: Path, symbol: str = "600519.SH", *, age_hours: float | None
         "events": [{"date": "2026-08-20", "type": "解禁", "title": "限售股解禁",
                     "summary": "占总股本0.5%", "tags": ["解禁"]}],
         "risk": [{"severity": "中", "title": "白酒需求波动", "description": "行业景气度下行"}],
-        "technical": {"date": "2026-07-31",
-                      "ma": {"ma5": 1360.0, "ma10": 1350.0}, "macd": {"dif": 2.3, "dea": 1.8, "macd": 0.5},
-                      "kdj": {"k": 60.0, "d": 55.0, "j": 70.0}, "rsi": 55.0,
-                      "boll": {"upper": 1400.0, "mid": 1350.0, "lower": 1300.0}},
+        "technical": {"sh600519": {
+            "code": "sh600519", "name": "贵州茅台", "date": "2026-07-31", "closePrice": 1360.0,
+            "ma": {"MA_5": 1360.0, "MA_10": 1350.0, "MA_20": 1340.0, "MA_60": 1300.0},
+            "macd": {"DIF": 2.3, "DEA": 1.8, "MACD": 0.5},
+            "kdj": {"KDJ_K": 60.0, "KDJ_D": 55.0, "KDJ_J": 70.0},
+            "rsi": {"RSI_6": 50.0, "RSI_12": 55.0, "RSI_24": 58.0},
+            "boll": {"BOLL_UPPER": 1400.0, "BOLL_MID": 1350.0, "BOLL_LOWER": 1300.0},
+        }},
     }
     for capability, data in caches.items():
         _write_cache(root, capability, symbol, data, fetched_at=fetched)
@@ -223,9 +227,9 @@ def test_technical_controlled_indicators_and_note(tmp_path, config_factory):
     _seed_full(root)
     app = _make_app(root, config_factory)
     body = _auth_get(app, "/api/stocks/600519.SH/technical").json()
-    assert body["data"]["indicators"]["rsi"] == 55.0
+    assert body["data"]["indicators"]["rsi"]["rsi12"] == 55.0
     assert body["data"]["indicators"]["ma"]["ma5"] == 1360.0
-    assert "不写入本地 K 线" in body["data"]["note"]
+    assert "BigA 策略与回测使用本地 curated 数据独立计算" in body["data"]["note"]
     assert body["availability"]["technical"] == "fresh"
 
 

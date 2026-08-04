@@ -104,8 +104,11 @@ def _as_finite_float(value: Any) -> float | None:
     return number
 
 
-def normalize_minute(data: Any) -> tuple[list[dict[str, Any]] | None, str]:
-    """受控标准化分时数据。
+_MINUTE_SCAN_LIMIT = 500
+
+
+def _normalize_minute_legacy(data: Any) -> tuple[list[dict[str, Any]] | None, str]:
+    """向后兼容路径（expected_symbol 未给定时的旧结构解析）。
 
     只接受：list[dict] 或 {"minutes": list[dict]}；每行必须含受控 time 与 price
     字段（volume 可选）。字段缺失、结构未知或数值非法 → (None, 原因)，不猜字段。
@@ -138,6 +141,108 @@ def normalize_minute(data: Any) -> tuple[list[dict[str, Any]] | None, str]:
     return out, "ok"
 
 
+def _parse_minute_line(line: Any) -> dict[str, Any] | None:
+    """解析 Westock 分时行：恰好 4 段 "HHMM price volume amount"。
+
+    time 严格 4 位数字且为合法 HHMM；price finite 且 >0；volume finite 且 >=0（手，
+    不乘 100，整数输出整数）；amount finite 且 >=0（元）。任一非法 → 整行丢弃。
+    """
+    if not isinstance(line, str):
+        return None
+    parts = line.split()
+    if len(parts) != 4:
+        return None
+    raw_time, raw_price, raw_vol, raw_amt = parts
+    if len(raw_time) != 4 or not raw_time.isdigit():
+        return None
+    hour, minute = int(raw_time[:2]), int(raw_time[2:])
+    if hour > 23 or minute > 59:
+        return None
+    price = _as_finite_float(raw_price)
+    volume = _as_finite_float(raw_vol)
+    amount = _as_finite_float(raw_amt)
+    if price is None or price <= 0:
+        return None
+    if volume is None or volume < 0:
+        return None
+    if amount is None or amount < 0:
+        return None
+    volume_out: float | int = int(volume) if volume == int(volume) else volume
+    return {"time": f"{hour:02d}:{minute:02d}", "price": price,
+            "volume": volume_out, "amount": amount}
+
+
+def _normalize_minute_westock(data: Any, expected_symbol: str,
+                              warnings: list[str]) -> tuple[dict[str, Any] | None, str]:
+    """Westock 真实分时结构校准（F2-A）：
+
+    真实结构为严格 wrapper 单键 data.<westock_code>.data：date（YYYYMMDD）+ data（字符串数组）。
+    只解析该字符串数组；不解析、不输出 qt / mx_price / 原始字符串。
+    统计非法行数、重复 time 数与超限裁剪，warning 固定脱敏（不回显原始行）。
+    """
+    payload = unwrap_strict_westock_payload(data, expected_symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    inner = payload.get("data")
+    if not isinstance(inner, dict):
+        return None, "缺少 data 节点"
+    raw_date = inner.get("date")
+    if not isinstance(raw_date, str) or not re.fullmatch(r"[0-9]{8}", raw_date):
+        return None, "日期非法"
+    try:
+        date_out = datetime.strptime(raw_date, "%Y%m%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None, "日期非法"
+    raw_rows = inner.get("data")
+    if not isinstance(raw_rows, list):
+        return None, "分时行非列表"
+    if len(raw_rows) > _MINUTE_SCAN_LIMIT:
+        warnings.append(f"Westock 分时数据超过 {_MINUTE_SCAN_LIMIT} 行扫描上限，已裁剪")
+        raw_rows = raw_rows[:_MINUTE_SCAN_LIMIT]
+    by_time: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+    invalid = 0
+    duplicates = 0
+    for line in raw_rows:
+        row = _parse_minute_line(line)
+        if row is None:
+            invalid += 1
+            continue
+        if row["time"] in seen:
+            duplicates += 1
+        else:
+            seen.add(row["time"])
+        by_time[row["time"]] = row  # 重复 time 保留输入中最后一个有效行
+    if invalid:
+        warnings.append(f"Westock 分时数据含 {invalid} 行无法解析，已丢弃")
+    if duplicates:
+        warnings.append(f"Westock 分时数据含 {duplicates} 个重复时间，保留最后值")
+    if not by_time:
+        return None, "无可识别分时行"
+    rows = [by_time[t] for t in sorted(by_time)]
+    return {
+        "date": date_out,
+        "rows": rows,
+        "price_unit": "CNY",
+        "volume_unit": "lot",
+        "amount_unit": "CNY",
+    }, "ok"
+
+
+def normalize_minute(data: Any, expected_symbol: str | None = None,
+                     warnings: list[str] | None = None) -> tuple[Any, str]:
+    """受控标准化分时数据（F2-A 校准版）。
+
+    expected_symbol 给定时走 Westock 真实结构路径（wrapper 单键 + data.data 字符串数组），
+    绑定请求标的并输出 date/rows/单位元数据；未给定时保留旧结构路径（list[dict] /
+    {"minutes": [...]}），供既有调用兼容。
+    """
+    if expected_symbol is None:
+        return _normalize_minute_legacy(data)
+    sink = warnings if warnings is not None else []
+    return _normalize_minute_westock(data, expected_symbol, sink)
+
+
 _SYMBOL_PREFIX_RE = re.compile(r"^(sh|sz|bj)[0-9]{6}$")
 
 
@@ -158,6 +263,29 @@ def _unwrap_symbol_payload(data: Any, expected_symbol: str | None = None) -> Any
                 return None  # 外层唯一键与请求标的不一致
             return value
     return data
+
+
+def unwrap_strict_westock_payload(data: Any, expected_symbol: str) -> dict[str, Any] | None:
+    """严格 Westock wrapper 解包（minute/technical 校准专用，不改共享 helper 语义）。
+
+    要求全部满足才解包：
+    - 顶层 dict 恰好一个键；
+    - 该键为合法前缀股票键（sh/sz/bj + 6 位，可转换）；
+    - 值为 dict；
+    - 外层股票与 expected_symbol 完整一致（市场前缀必须一致）。
+    任一不满足返回 None（身份冲突/结构非法 → 调用方降级 unavailable）。
+    """
+    if not isinstance(data, dict) or len(data) != 1:
+        return None
+    key, value = next(iter(data.items()))
+    if not isinstance(key, str):
+        return None
+    key_symbol = westock_code_to_symbol(key)
+    if key_symbol is None or key_symbol != expected_symbol:
+        return None
+    if not isinstance(value, dict):
+        return None
+    return value
 
 
 def quote_identity_conflict(data: Any, expected_symbol: str) -> str | None:
@@ -505,45 +633,46 @@ class CuratedStocksService:
             return {
                 "schema_version": SCHEMA_VERSION,
                 "symbol": symbol,
-                "source": "westock-cache",
+                "source": "westock-mcp",
                 "as_of": None,
                 "fetched_at": None,
                 "cache_status": "unavailable",
                 "is_realtime": False,
-                "transport": "westock-cache",
+                "transport": "cache_export",
                 "availability": {"westock_minute": False},
                 "data": None,
                 "warnings": ["Westock 分时缓存不存在、过期或非法；不宣称实时"],
             }
-        rows, reason = normalize_minute(envelope.get("data"))
-        if rows is None:
+        warnings: list[str] = ["Westock 缓存导出，非实时"]
+        payload, reason = normalize_minute(envelope.get("data"), symbol, warnings)
+        if payload is None:
             return {
                 "schema_version": SCHEMA_VERSION,
                 "symbol": symbol,
-                "source": "westock-cache",
+                "source": "westock-mcp",
                 "as_of": envelope.get("as_of"),
                 "fetched_at": envelope.get("fetched_at"),
                 "cache_status": "unavailable",
                 "is_realtime": False,
-                "transport": "westock-cache",
+                "transport": "cache_export",
                 "availability": {"westock_minute": False},
                 "data": None,
-                "warnings": [f"Westock 分时数据无法标准化（{reason}），不展示"],
+                # 保留计数 warning（非法行/重复时间/裁剪），再追加降级文案
+                "warnings": warnings + [f"Westock 分时数据无法标准化（{reason}），不展示"],
             }
-        warnings = ["Westock 缓存导出，非实时"]
         if status == "stale":
             warnings.append("Westock 分时缓存已过期（stale），仅作展示")
         return {
             "schema_version": SCHEMA_VERSION,
             "symbol": symbol,
-            "source": "westock-cache",
+            "source": "westock-mcp",
             "as_of": envelope.get("as_of"),
             "fetched_at": envelope.get("fetched_at"),
             "cache_status": status,  # fresh / stale / unavailable
             "is_realtime": False,
-            "transport": "westock-cache",
+            "transport": "cache_export",
             "availability": {"westock_minute": True},
-            "data": {"rows": rows},
+            "data": payload,
             "warnings": warnings,
         }
 

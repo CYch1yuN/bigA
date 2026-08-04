@@ -68,7 +68,9 @@ def _write_westock_cache(root: Path, capability: str, symbol: str,
         "as_of": "2026-07-31",
         "fetched_at": fetched_at or datetime.now(timezone.utc).isoformat(),
         "cached_at": datetime.now(timezone.utc).isoformat(),
-        "data": {"price": 1350.6, "change_percent": 0.03} if capability == "quote" else {"minutes": []},
+        "data": ({"price": 1350.6, "change_percent": 0.03} if capability == "quote"
+                 else {"sh600519": {"data": {"date": "20260731",
+                                             "data": ["0930 1350.6 100 13506000.00"]}}}),
         "warnings": [],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -327,7 +329,10 @@ def test_minute_cache_present_and_missing(auth_client, stocks_root):
     assert body["availability"]["westock_minute"] is True
     assert body["is_realtime"] is False
     assert any("非实时" in w for w in body["warnings"])
-    assert body["data"]["rows"] == []  # 空分钟列表正常标准化
+    assert body["data"]["date"] == "2026-07-31"
+    assert body["data"]["rows"] == [{"time": "09:30", "price": 1350.6,
+                                     "volume": 100, "amount": 13506000.0}]
+    assert body["data"]["price_unit"] == "CNY"
 
 
 def test_minute_expired_is_stale_not_fresh(auth_client, stocks_root):

@@ -21,7 +21,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .stocks_service import (CuratedStocksService, SYMBOL_RE, _as_finite_float,
-                             identity_violation, westock_code_to_symbol)
+                             identity_violation, unwrap_strict_westock_payload,
+                             westock_code_to_symbol)
 
 SCHEMA_VERSION = 1
 MAX_INTEL_LIMIT = 50
@@ -105,12 +106,13 @@ _SHEET_FIELDS = {
     "cash_flow": ("operating_cash_flow", "investing_cash_flow", "financing_cash_flow", "net_cash_flow"),
 }
 _CHIP_DIST_FIELDS = ("price", "ratio", "chips")
-_TECH_SCHEMA = {
-    "ma": ("ma5", "ma10", "ma20", "ma60"),
-    "macd": ("dif", "dea", "macd"),
-    "kdj": ("k", "d", "j"),
-    "boll": ("upper", "mid", "lower"),
-    "rsi": ("rsi6", "rsi12", "rsi24"),
+# F2-A：technical 真实字段映射（源字段名 → 输出规范名），严格区分大小写，不猜别名
+_TECH_FIELD_MAP = {
+    "ma": (("MA_5", "ma5"), ("MA_10", "ma10"), ("MA_20", "ma20"), ("MA_60", "ma60")),
+    "macd": (("DIF", "dif"), ("DEA", "dea"), ("MACD", "macd")),
+    "kdj": (("KDJ_K", "k"), ("KDJ_D", "d"), ("KDJ_J", "j")),
+    "rsi": (("RSI_6", "rsi6"), ("RSI_12", "rsi12"), ("RSI_24", "rsi24")),
+    "boll": (("BOLL_UPPER", "upper"), ("BOLL_MID", "mid"), ("BOLL_LOWER", "lower")),
 }
 
 _INTEL_ITEM_FIELDS = {
@@ -456,34 +458,63 @@ def _norm_chip(data: Any, warnings: list[str]) -> tuple[dict[str, Any] | None, s
     return out, None
 
 
-def _norm_technical(data: Any) -> tuple[Any, str | None]:
-    """技术指标强制 schema：MA/MACD/KDJ/BOLL/RSI 白名单，所有数值 finite。"""
-    if not isinstance(data, dict):
-        return None, "非对象"
-    out: dict[str, Any] = {}
-    for group, fields in _TECH_SCHEMA.items():
-        raw = _pick(data, (group, group.upper()))
-        if not isinstance(raw, dict):
-            # RSI 允许受控标量（rsi 单值）
-            if group == "rsi":
-                scalar = _as_finite_float(_pick(data, ("rsi", "RSI")))
-                if scalar is not None:
-                    out["rsi"] = scalar
+def _tech_finite(value: Any) -> float | None:
+    """技术指标数值校验：拒绝 bool / NaN / Infinity / dict / list / 垃圾字符串；
+    接受 int / float / 数值字符串。"""
+    if isinstance(value, bool):
+        return None
+    return _as_finite_float(value)
+
+
+def _norm_technical(data: Any, expected_symbol: str,
+                    warnings: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    """technical 真实结构校准（F2-A）：仅映射 5 组白名单指标。
+
+    严格 wrapper（恰一个合法前缀键且与 expected 一致）+ 内层 code 必须存在、合法且一致，
+    任一不满足 → 整项 unavailable；date 严格 YYYY-MM-DD 作为核心日期，非法 → unavailable；
+    closePrice 可选（>0 才收）。bias/wr/dmi/other 与未知字段全部丢弃；
+    某组无有效值则省略；5 组全无效 → unavailable。
+    """
+    payload = unwrap_strict_westock_payload(data, expected_symbol)
+    if payload is None:
+        return None, "外层股票代码与请求标的不一致"
+    # 内层 code 必须存在、合法且一致（缺失也 unavailable）
+    code = payload.get("code")
+    if not isinstance(code, str) or identity_violation(expected_symbol, code):
+        return None, "code 与请求标的不一致"
+    raw_date = payload.get("date")
+    if not isinstance(raw_date, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", raw_date):
+        return None, "日期非法"
+    try:
+        datetime.strptime(raw_date, "%Y-%m-%d")
+    except ValueError:
+        return None, "日期非法"
+    close_price: float | None = None
+    if "closePrice" in payload:
+        number = _tech_finite(payload.get("closePrice"))
+        if number is None or number <= 0:
+            warnings.append("technical closePrice 非法，已丢弃")
+        else:
+            close_price = number
+    groups: dict[str, dict[str, float]] = {}
+    for group, mappings in _TECH_FIELD_MAP.items():
+        raw_group = payload.get(group)
+        if not isinstance(raw_group, dict):
             continue
-        normalized: dict[str, Any] = {}
-        for field in fields:
-            if field in raw and raw[field] is not None:
-                number = _as_finite_float(raw[field])
+        normalized: dict[str, float] = {}
+        for src, dst in mappings:
+            if src in raw_group:
+                number = _tech_finite(raw_group[src])
                 if number is not None:
-                    normalized[field] = number
+                    normalized[dst] = number
         if normalized:
-            out[group] = normalized
-    date = _pick(data, ("date", "trade_date", "indicator_date"))
-    valid = _valid_date_str(date)
-    if valid:
-        out["date"] = valid
-    if not out:
+            groups[group] = normalized
+    if not groups:
         return None, "缺少受控指标字段"
+    out: dict[str, Any] = {"date": raw_date}
+    out.update(groups)
+    if close_price is not None:
+        out["closePrice"] = close_price
     return out, None
 
 
@@ -882,15 +913,16 @@ class StocksDeepService:
         data: dict[str, Any] = {"indicators": None}
         warnings: list[str] = []
         if envelope is not None and status != "unavailable":
-            indicators, reason = _norm_technical(envelope.get("data"))
+            indicators, reason = _norm_technical(envelope.get("data"), symbol, warnings)
             if indicators is None:
                 status = "unavailable"
-                warnings.append(f"technical 缓存结构无法标准化（{reason or '未知结构'}）")
+                warnings.append(f"technical 缓存身份校验或结构标准化失败（{reason or '未知结构'}）")
             else:
                 data["indicators"] = indicators
         status_map = {"technical": status}
         if data["indicators"] is not None:
-            data["note"] = "技术指标来自 Westock 缓存，仅作展示；不写入本地 K 线、策略或回测"
+            data["note"] = ("技术指标来自 Westock 缓存，仅作研究展示；"
+                            "BigA 策略与回测使用本地 curated 数据独立计算。")
         return self._envelope(symbol, status_map, data, warnings, {"technical": meta})
 
 

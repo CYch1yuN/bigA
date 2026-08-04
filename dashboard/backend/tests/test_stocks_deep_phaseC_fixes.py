@@ -63,10 +63,12 @@ def test_nested_unknown_keys_dropped(tmp_path, config_factory):
         "share_structure": {"a_shares": 1.0, "unknown_key": 99},
     })
     _write_cache(root, "technical", "600519.SH", {
-        "date": "2026-07-31",
-        "ma": {"ma5": 1.0, "ma999": 2.0, "hacked": 3.0},
-        "macd": {"dif": 0.1, "dea": 0.2, "macd": 0.3, "extra": 9},
-        "mystery_indicator": {"a": 1},
+        "sh600519": {
+            "code": "sh600519", "date": "2026-07-31",
+            "ma": {"MA_5": 1.0, "MA_999": 2.0, "hacked": 3.0},
+            "macd": {"DIF": 0.1, "DEA": 0.2, "MACD": 0.3, "extra": 9},
+            "mystery_indicator": {"a": 1},
+        },
     })
     app = _make_app(root, config_factory)
 
