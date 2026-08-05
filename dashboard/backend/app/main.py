@@ -48,6 +48,11 @@ from .screener_service import MAX_BODY_BYTES, ScreenerError, ScreenerService, bu
 from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
+from .westock_refresh_service import (
+    RefreshError,
+    build_coverage_scanner,
+    build_refresh_store,
+)
 
 # 会话 Cookie 名称
 SESSION_COOKIE = "ashare_dash_session"
@@ -139,6 +144,9 @@ def create_app(
     app.state.executor = executor
     app.state.job_manager = job_manager
     app.state.westock_bridge = build_westock_bridge(root)
+    app.state.westock_refresh = build_refresh_store(root)
+    app.state.westock_coverage = build_coverage_scanner(
+        root, app.state.westock_bridge.cache)
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
     app.state.market: MarketService = build_market_service(root)
@@ -276,25 +284,116 @@ def create_app(
         await _require_session(request, security, csrf_required=False)
         return JSONResponse(app.state.westock_bridge.connection_status())
 
+    @app.get("/api/connections/westock/coverage")
+    async def westock_coverage(request: Request) -> JSONResponse:
+        """Coverage 索引：缓存目录扫描（read 校验）+ 逐股票本地历史。"""
+        await _require_session(request, security, csrf_required=False)
+        allowed = {k: v for k, v in request.query_params.items()}
+        try:
+            result = app.state.westock_coverage.scan(allowed)
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(result)
+
+    @app.get("/api/connections/westock/refresh-requests")
+    async def westock_refresh_requests_list(request: Request) -> JSONResponse:
+        """当前 session 的刷新请求队列（limit 1–50、offset≥0、total）。"""
+        session = await _require_session(request, security, csrf_required=False)
+        params = dict(request.query_params)
+        unknown = set(params) - {"status", "limit", "offset"}
+        if unknown:
+            return JSONResponse(error_body("invalid_filter",
+                                           f"未知查询参数: {sorted(unknown)[0]}"), status_code=400)
+        status = params.get("status")
+        if status and status not in ("pending", "processing", "completed",
+                                     "partial", "failed", "cancelled", "expired"):
+            return JSONResponse(error_body("invalid_filter", "status 筛选不合法"), status_code=400)
+        try:
+            limit = int(params.get("limit", "50"))
+            offset = int(params.get("offset", "0"))
+        except ValueError:
+            return JSONResponse(error_body("invalid_filter", "limit/offset 必须是整数"), status_code=400)
+        if not (1 <= limit <= 50) or offset < 0:
+            return JSONResponse(error_body("invalid_filter", "limit 1–50、offset≥0"), status_code=400)
+        result = app.state.westock_refresh.list_for_session(
+            session.sid, status=status, limit=limit, offset=offset)
+        return JSONResponse({"ok": True, "items": result["items"], "total": result["total"]})
+
+    @app.get("/api/connections/westock/refresh-requests/{request_id}")
+    async def westock_refresh_request_detail(request: Request, request_id: str) -> JSONResponse:
+        """单个刷新请求详情（仅当前 session；非所有者 404）。"""
+        session = await _require_session(request, security, csrf_required=False)
+        from .westock_refresh_service import REQUEST_ID_RE
+        if not REQUEST_ID_RE.fullmatch(request_id):
+            return JSONResponse(error_body("invalid_request", "request_id 必须是 32 位小写 hex"),
+                                status_code=400)
+        item = app.state.westock_refresh.get_for_session(request_id, session.sid)
+        if item is None:
+            return JSONResponse(error_body("request_not_found", "刷新请求不存在"), status_code=404)
+        return JSONResponse(item)
+
+    @app.post("/api/connections/westock/refresh-requests")
+    async def westock_refresh_requests_create(request: Request) -> JSONResponse:
+        """创建刷新请求（Dashboard 不调用 MCP；等待 WorkBuddy 会话处理）。"""
+        session = await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request, max_bytes=64 * 1024)
+        if not body:
+            return JSONResponse(error_body("invalid_request", "请求体非法或超过 64 KiB"),
+                                status_code=400)
+        from .westock_refresh_service import _has_forbidden_key
+        if _has_forbidden_key(body):
+            return JSONResponse(error_body("invalid_request", "请求体包含禁止字段"),
+                                status_code=400)
+        try:
+            item = app.state.westock_refresh.create_request(body=body, session_id=session.sid)
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message), status_code=exc.status_code)
+        return JSONResponse({"ok": True, **item})
+
+    @app.delete("/api/connections/westock/refresh-requests/{request_id}")
+    async def westock_refresh_requests_cancel(request: Request, request_id: str) -> JSONResponse:
+        """取消刷新请求（仅 pending；非所有者 404）。"""
+        session = await _require_session(request, security, csrf_required=True)
+        from .westock_refresh_service import REQUEST_ID_RE
+        if not REQUEST_ID_RE.fullmatch(request_id):
+            return JSONResponse(error_body("invalid_request", "request_id 必须是 32 位小写 hex"),
+                                status_code=400)
+        try:
+            item = app.state.westock_refresh.cancel_for_session(request_id, session.sid)
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message), status_code=exc.status_code)
+        if item is None:
+            return JSONResponse(error_body("request_not_found", "刷新请求不存在"), status_code=404)
+        return JSONResponse({"ok": True, **item})
+
     @app.post("/api/connections/westock/refresh")
     async def westock_refresh(request: Request) -> JSONResponse:
-        """Request a safe refresh; cache-export mode reports its limitation."""
-        await _require_session(request, security, csrf_required=True)
-        body = await _parse_json(request)
-        capabilities = body.get("capabilities", [])
-        if not isinstance(capabilities, list) or any(not isinstance(item, str) for item in capabilities):
+        """创建刷新请求（兼容入口）：与 /refresh-requests 同一严格模型。"""
+        session = await _require_session(request, security, csrf_required=True)
+        body = await _parse_json(request, max_bytes=64 * 1024)
+        from .westock_refresh_service import _has_forbidden_key
+        if not body or _has_forbidden_key(body):
             return JSONResponse(
-                error_body("invalid_request", "capabilities 必须是字符串数组"),
+                error_body("invalid_refresh_request", "无法解析刷新请求"),
                 status_code=400,
             )
         try:
-            result = app.state.westock_bridge.request_refresh(capabilities)
-        except ValueError:
-            return JSONResponse(
-                error_body("invalid_capability", "请求包含未开放的 Westock 能力"),
-                status_code=400,
-            )
-        return JSONResponse(result)
+            item = app.state.westock_refresh.create_request(body=body, session_id=session.sid)
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message), status_code=exc.status_code)
+        target = item["target"]
+        return JSONResponse({
+            "ok": True,
+            "accepted": True,
+            "transport": "cache_export",
+            "is_realtime": False,
+            "request_id": item["request_id"],
+            "status": item["status"],
+            "target": target,
+            "jobs": item["jobs"],
+            "message": "刷新请求已创建，等待 WorkBuddy 会话处理。",
+        })
 
     # ---------- Phase B：个股行情与策略联动（只读） ----------
 

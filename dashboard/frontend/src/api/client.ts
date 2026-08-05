@@ -182,8 +182,64 @@ export interface WestockRefreshResult {
   ok: boolean;
   accepted: boolean;
   transport: string;
-  requested: string[];
+  requested?: string[];
+  is_realtime?: boolean;
+  request_id?: string;
+  status?: string;
+  target?: string;
+  preset?: string;
+  symbol?: string | null;
+  capabilities?: string[];
   message: string;
+}
+
+export interface WestockRefreshJob {
+  job_id: string;
+  capability: string;
+  scope: string;
+  status: string;
+  summary_only?: boolean;
+  fetched_at?: string | null;
+  cache_status?: string | null;
+  data_as_of?: string | null;
+  content_hash?: string | null;
+  warning?: string | null;
+}
+
+export type WestockTarget =
+  | { kind: 'stock'; symbols: string[]; preset?: string; capabilities?: string[]; allow_summary_only?: boolean; summary_only_symbols?: string[] }
+  | { kind: 'market'; preset: string }
+  | { kind: 'screener'; result_id: string; cache_scope: string; capability: string };
+
+export interface WestockRefreshRequest {
+  request_id: string;
+  status: string;
+  target: WestockTarget;
+  jobs: WestockRefreshJob[];
+  created_at?: string | null;
+  claimed_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  expires_at?: string | null;
+  attempts?: number;
+  warnings?: string[];
+  status_detail?: string | null;
+}
+
+export interface WestockCoverage {
+  schema_version: number;
+  capability_total: number;
+  discovered_capabilities: string[];
+  fresh_count: number;
+  stale_count: number;
+  unavailable_count: number;
+  stock_matrix: Record<string, Record<string, string>>;
+  stock_local_history: Record<string, boolean>;
+  global_capabilities: Record<string, string>;
+  query_scope_counts: Record<string, number>;
+  latest_export_at?: string | null;
+  local_history_available: boolean;
+  warnings?: string[];
 }
 
 // ---- Phase B 类型 ----
@@ -578,11 +634,46 @@ export const api = {
       body: JSON.stringify({ job_type: jobType, ...params, confirm_token: confirmToken }),
     }),
   westockConnection: () => request<WestockConnectionStatus>('/api/connections/westock'),
-  westockRefresh: (capabilities: string[] = []) =>
+  westockRefresh: (body: { target?: string; preset?: string; symbol?: string }) =>
     request<WestockRefreshResult>('/api/connections/westock/refresh', {
       method: 'POST',
-      body: JSON.stringify({ capabilities }),
+      body: JSON.stringify(body),
     }),
+  westockCoverage: (params: { capability?: string; scope?: string; status?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.capability) q.set('capability', params.capability);
+    if (params.scope) q.set('scope', params.scope);
+    if (params.status) q.set('status', params.status);
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request<WestockCoverage>(`/api/connections/westock/coverage${suffix}`);
+  },
+  westockRefreshRequests: (params: { status?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.set('status', params.status);
+    if (params.limit != null) q.set('limit', String(params.limit));
+    if (params.offset != null) q.set('offset', String(params.offset));
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request<{ ok: boolean; items: WestockRefreshRequest[]; total: number }>(
+      `/api/connections/westock/refresh-requests${suffix}`);
+  },
+  westockCreateRefreshRequest: (body: {
+    target: string;
+    preset?: string;
+    symbols?: string[];
+    capabilities?: string[];
+    allow_summary_only?: boolean;
+    result_id?: string;
+  }) =>
+    request<WestockRefreshRequest & { ok: boolean }>(
+      '/api/connections/westock/refresh-requests', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  westockCancelRefreshRequest: (requestId: string) =>
+    request<WestockRefreshRequest & { ok: boolean }>(
+      `/api/connections/westock/refresh-requests/${requestId}`, {
+        method: 'DELETE',
+      }),
   // ---- Phase B：个股行情与策略联动（只读） ----
   stocksList: (params: { query?: string; limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams();

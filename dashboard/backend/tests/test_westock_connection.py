@@ -16,6 +16,21 @@ def csrf_headers(client) -> dict[str, str]:
     return {"X-CSRF-Token": csrf} if csrf else {}
 
 
+@pytest.fixture()
+def isolated_client(tmp_path, config_factory, fake_executor):
+    """隔离 TestClient（project_root=tmp_path）：refresh 请求不触碰真实 state。"""
+    curated = tmp_path / "data" / "curated"
+    curated.mkdir(parents=True, exist_ok=True)
+    (curated / "daily_quotes_600519.SH_x.parquet").write_bytes(b"x")
+    from fastapi.testclient import TestClient
+    app = create_app(config_factory(project_root=str(tmp_path)),
+                     enable_static=False, executor=fake_executor)
+    with TestClient(app, base_url="https://127.0.0.1") as c:
+        resp = c.post("/api/auth/login", json={"username": "admin", "password": "secret123"})
+        assert resp.status_code == 200, resp.text
+        yield c
+
+
 def test_connection_requires_auth(client):
     assert client.get("/api/connections/westock").status_code == 401
 
@@ -111,26 +126,32 @@ def test_connection_api_reads_fixed_project_cache(tmp_path: Path, config_factory
     assert any("MCP 直连授权" in w for w in body["warnings"])  # 授权状态文案保留
 
 
-def test_refresh_requires_csrf_and_rejects_unknown_capability(auth_client):
-    denied = auth_client.post("/api/connections/westock/refresh", json={"capabilities": ["quote"]})
+def test_refresh_requires_csrf_and_rejects_ambiguous_target(isolated_client):
+    """F3：refresh 入口需 CSRF；旧式 capabilities 数组无 target → 拒绝。"""
+    denied = isolated_client.post("/api/connections/westock/refresh", json={"capabilities": ["quote"]})
     assert denied.status_code == 403
-    invalid = auth_client.post(
+    invalid = isolated_client.post(
         "/api/connections/westock/refresh",
         json={"capabilities": ["paper_trade"]},
-        headers=csrf_headers(auth_client),
+        headers=csrf_headers(isolated_client),
     )
     assert invalid.status_code == 400
-    assert invalid.json()["error"]["code"] == "invalid_capability"
+    assert invalid.json()["error"]["code"] in ("invalid_target", "invalid_refresh_request")
 
 
-def test_refresh_in_cache_mode_is_honest(auth_client):
-    response = auth_client.post(
+def test_refresh_in_cache_mode_is_honest(isolated_client):
+    """F3：创建刷新请求 → accepted=true + pending + 等待 WorkBuddy；不调用 MCP。"""
+    response = isolated_client.post(
         "/api/connections/westock/refresh",
-        json={"capabilities": ["quote", "profile"]},
-        headers=csrf_headers(auth_client),
+        json={"target": "stock", "preset": "basic", "symbols": ["600519.SH"]},
+        headers=csrf_headers(isolated_client),
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
-    assert body["accepted"] is False
+    assert body["accepted"] is True
     assert body["transport"] == "cache_export"
+    assert body["is_realtime"] is False
+    assert body["status"] == "pending"
+    assert len(body["request_id"]) == 32
+    assert len(body["jobs"]) == 4
     assert "WorkBuddy" in body["message"]
