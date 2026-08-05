@@ -137,6 +137,105 @@ def _parse_aware_iso(value: Any) -> datetime | None:
     return parsed
 
 
+def _stock_consumer_validator(capability: str, scope: str):
+    """Return a semantic validator for calibrated stock cache capabilities.
+
+    ``None`` means the capability is not a per-stock F2 adapter and keeps the
+    existing envelope-only behavior (market/query capabilities).  The
+    validator consumes the exact candidate envelope before it can replace the
+    live cache.
+    """
+    if not SYMBOL_RE.fullmatch(scope):
+        return None
+
+    def validate(envelope: dict[str, Any]) -> bool:
+        payload = envelope.get("data")
+        warnings: list[str] = []
+        from .stocks_service import normalize_minute, normalize_quote
+        from .stocks_deep_service import (
+            _BUYBACK_FIELDS, _FUND_FLOW_FIELDS, _PROFILE_FIELDS,
+            _fund_flow_identity_conflict, _norm_announcements,
+            _norm_block_trade, _norm_chip, _norm_dividend, _norm_events,
+            _norm_financials, _norm_forecast, _norm_mapping, _norm_margin,
+            _norm_news_identity_items, _norm_northbound, _norm_reports,
+            _norm_risk, _norm_shareholders, _norm_technical,
+            _profile_identity_conflict, _unwrap_fund_flow,
+        )
+
+        if capability == "quote":
+            return normalize_quote(payload, scope) is not None
+        if capability == "minute":
+            normalized, _ = normalize_minute(payload, scope, warnings)
+            if normalized is not None:
+                envelope["as_of"] = normalized.get("date")
+            return normalized is not None
+        if capability == "technical":
+            normalized, _ = _norm_technical(payload, scope, warnings)
+            if normalized is not None:
+                envelope["as_of"] = normalized.get("date")
+            return normalized is not None
+        if capability == "profile":
+            valid = (_profile_identity_conflict(payload, scope) is None
+                     and _norm_mapping(payload, _PROFILE_FIELDS) is not None)
+            if valid:
+                envelope["as_of"] = None
+            return valid
+        if capability == "financials":
+            normalized, _ = _norm_financials(payload, scope, warnings)
+            if normalized is not None and normalized.get("periods"):
+                envelope["as_of"] = normalized["periods"][0].get("report_date")
+            return normalized is not None
+        if capability == "forecast":
+            normalized, _ = _norm_forecast(payload, scope, warnings)
+            if normalized is not None:
+                envelope["as_of"] = None
+            return normalized is not None
+        if capability == "shareholders":
+            normalized, _ = _norm_shareholders(payload, scope, warnings)
+            return normalized is not None
+        if capability == "dividend":
+            normalized, _ = _norm_dividend(payload, scope, warnings)
+            return normalized is not None
+        if capability == "buyback":
+            return _norm_mapping(payload, _BUYBACK_FIELDS) is not None
+        if capability == "margin":
+            normalized, _ = _norm_margin(payload, scope, warnings)
+            return normalized is not None
+        if capability == "block_trade":
+            normalized, _ = _norm_block_trade(payload, scope, warnings)
+            return normalized is not None
+        if capability == "fund_flow":
+            return (_fund_flow_identity_conflict(payload, scope) is None
+                    and _norm_mapping(_unwrap_fund_flow(payload), _FUND_FLOW_FIELDS) is not None)
+        if capability == "northbound":
+            normalized, _ = _norm_northbound(payload, scope, warnings)
+            if normalized is not None and normalized.get("current"):
+                envelope["as_of"] = normalized["current"].get("date")
+            return normalized is not None
+        if capability == "news":
+            normalized, _ = _norm_news_identity_items(payload, warnings, scope)
+            return normalized is not None
+        if capability == "reports":
+            normalized, _ = _norm_reports(payload, scope, warnings)
+            return normalized is not None
+        if capability == "announcements":
+            normalized, _ = _norm_announcements(payload, scope, warnings)
+            return normalized is not None
+        if capability == "events":
+            normalized, _ = _norm_events(payload, scope, warnings)
+            return normalized is not None
+        if capability == "risk":
+            normalized, _ = _norm_risk(payload, scope, warnings)
+            return normalized is not None
+        if capability == "chip_distribution":
+            normalized, _ = _norm_chip(payload, scope, warnings)
+            return normalized is not None
+        return True
+
+    calibrated = set(_STOCK_CAPS) - {"lhb"}
+    return validate if capability in calibrated else None
+
+
 def session_fingerprint(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
@@ -713,7 +812,8 @@ class RefreshStore:
                         "capability": cap,
                         "scope": scope,
                         "status": "pending",
-                        "summary_only": is_summary,
+                        # LHB 为全局能力，不随个股 summary_only 标记
+                        "summary_only": False if cap == "lhb" else is_summary,
                     })
             # LHB global 同批去重（scope=global 的 lhb 只保留一个）
             dedup: dict[tuple[str, str], dict[str, Any]] = {}
@@ -984,13 +1084,17 @@ class RefreshStore:
         data_payload = export.get("data")
         if not isinstance(data_payload, (dict, list)):
             raise RefreshError("invalid_export", "data 必须是对象或数组", 400)
-        # 写入缓存（原子；失败不破坏旧缓存）
+        # 候选缓存先经正式消费者标准化；通过后才原子晋升。
+        validator = _stock_consumer_validator(job["capability"], job["scope"])
         try:
-            cache_store.write_export(job["capability"], data_payload,
-                                     scope=job["scope"], as_of=as_of,
-                                     fetched_at=fetched_at.isoformat())
+            cache_store.write_validated_export(
+                job["capability"], data_payload, scope=job["scope"],
+                as_of=as_of, fetched_at=fetched_at.isoformat(),
+                validator=validator)
         except (ValueError, OSError) as exc:
-            raise RefreshError("export_failed", "导出失败（旧缓存未受影响）", 400) from exc
+            raise RefreshError(
+                "consumer_validation_failed",
+                "导出内容无法通过受控标准化校验，旧缓存未受影响", 400) from exc
         # 写后重新 read 校验
         env = cache_store.read(job["capability"], job["scope"])
         if env is None:

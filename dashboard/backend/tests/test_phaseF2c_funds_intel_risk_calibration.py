@@ -556,7 +556,7 @@ def test_e2e_real_northbound():
     from app.stocks_deep_service import StocksDeepService
 
     nb = StocksDeepService(_REPO_ROOT).funds("600519.SH")["data"]["northbound"]
-    assert nb is not None and "current" in nb
+    assert nb is not None and "current" in nb and "previous" in nb
     assert nb["current"]["date"] == "2026-06-30"
 
 

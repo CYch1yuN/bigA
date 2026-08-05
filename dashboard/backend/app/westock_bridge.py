@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 SCHEMA_VERSION = 1
@@ -131,6 +131,27 @@ class WestockCacheStore:
         as_of: str | None = None,
         fetched_at: str | None = None,
     ) -> dict[str, Any]:
+        return self.write_validated_export(
+            capability, data, scope=scope, source=source, as_of=as_of,
+            fetched_at=fetched_at, validator=None)
+
+    def write_validated_export(
+        self,
+        capability: str,
+        data: Any,
+        *,
+        scope: str = "global",
+        source: str = "westock-mcp",
+        as_of: str | None = None,
+        fetched_at: str | None = None,
+        validator: Callable[[dict[str, Any]], bool] | None = None,
+    ) -> dict[str, Any]:
+        """Write a candidate envelope and promote it only after validation.
+
+        The candidate lives beside the final cache file so ``os.replace`` is
+        atomic.  A failed consumer validation never replaces the previous
+        cache and the candidate is removed best-effort.
+        """
         definition = CAPABILITY_MAP.get(capability)
         if definition is None or not _CAPABILITY_RE.fullmatch(capability):
             raise ValueError("unsupported capability")
@@ -148,6 +169,8 @@ class WestockCacheStore:
             "data": data,
             "warnings": [],
         }
+        if validator is not None and not validator(envelope):
+            raise ValueError("cache consumer validation failed")
         path = self._path(capability, scope)
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(prefix=f".{scope}.", suffix=".tmp", dir=path.parent)

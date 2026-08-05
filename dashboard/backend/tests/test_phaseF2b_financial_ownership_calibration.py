@@ -845,7 +845,7 @@ def test_e2e_real_financials():
     assert fin is not None
     assert len(fin["periods"]) == 3
     assert [p["report_date"] for p in fin["periods"]] == \
-        ["2026-03-31", "2025-12-31", "2025-09-30"]  # 倒序
+        ["2026-03-31", "2025-12-31", "2025-09-30"]
     assert fin["summary"]["report_date"] == "2026-03-31"
     assert fin["summary"]["eps"] == pytest.approx(21.76)
     assert "unit_note" in fin

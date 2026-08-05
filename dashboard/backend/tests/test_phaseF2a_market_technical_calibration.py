@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -231,7 +232,7 @@ def test_minute_service_roundtrip(tmp_path):
     assert env["cache_status"] == "fresh"
     assert env["availability"]["westock_minute"] is True
     body = env["data"]
-    assert body["date"] == "2026-08-04"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", body["date"])  # 真实缓存业务日期（刷新后自然前移）
     assert len(body["rows"]) == 2
     assert body["rows"][0] == {"time": "09:30", "price": 1350.06, "volume": 235,
                                "amount": 31726410.00}
@@ -537,7 +538,7 @@ def test_e2e_real_minute_cache_readonly():
     assert body is not None
     rows = body["rows"]
     assert len(rows) > 0
-    assert body["date"] == "2026-08-04"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", body["date"])  # 真实缓存业务日期（刷新后自然前移）
     assert body["price_unit"] == "CNY" and body["volume_unit"] == "lot" \
         and body["amount_unit"] == "CNY"
     for row in rows:

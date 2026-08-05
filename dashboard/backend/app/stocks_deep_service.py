@@ -1647,6 +1647,10 @@ class StocksDeepService:
             "profile", symbol, lambda d: (_norm_mapping(d, _PROFILE_FIELDS), None),
             warnings,
             identity_checker=lambda d: _profile_identity_conflict(d, symbol))
+        # 公司资料没有明确业务日期；抓取日不得冒充 as_of 并压过财报报告期。
+        if m is not None:
+            m = dict(m)
+            m["as_of"] = None
         status_map["profile"] = status
         data["profile"] = profile
         meta["profile"] = m

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import tempfile
@@ -376,9 +377,15 @@ def _claim_and_jobs(store, rid):
 
 
 def _export_payload(capability, scope, ok=True, extra=None):
+    samples = {
+        "quote": {"code": "sh600519", "last": 1350.0},
+        "profile": {"code": "sh600519", "name": "贵州茅台"},
+        "news": [{"title": "测试资讯", "date": "2026-08-05"}],
+        "fund_flow": {"code": "sh600519", "main": 1.0},
+    }
     payload = {"schema_version": 2, "capability": capability, "scope": scope,
                "ok": ok, "fetched_at": (NOW - timedelta(minutes=1)).isoformat(),
-               "as_of": "2026-08-05", "data": {"v": 1}}
+               "as_of": "2026-08-05", "data": samples.get(capability, {"v": 1})}
     if extra:
         payload.update(extra)
     return payload
@@ -409,6 +416,57 @@ def test_export_mismatch_rejected(tmp_path):
     with pytest.raises(RefreshError):
         store.export_job(rid, job_quote["job_id"],
                          _export_payload("quote", "600519.SH", extra={"x": 1}), cache)
+
+
+def test_consumer_validation_failure_preserves_rich_cache(tmp_path):
+    store = _mk_store(tmp_path)
+    cache = WestockCacheStore(tmp_path / "state" / "dashboard" / "westock")
+    rich = {"sh600519": {"code": "sh600519", "date": "2026-08-05",
+                           "ma": {"MA_5": 1.0}, "macd": {"DIF": 1.0},
+                           "kdj": {"KDJ_K": 1.0}, "rsi": {"RSI_6": 1.0},
+                           "boll": {"BOLL_UPPER": 2.0, "BOLL_MID": 1.0,
+                                    "BOLL_LOWER": 0.5}}}
+    cache.write_export("technical", rich, scope="600519.SH",
+                       as_of="2026-08-05", fetched_at=(NOW - timedelta(minutes=1)).isoformat())
+    path = cache._path("technical", "600519.SH")
+    before = path.read_bytes()
+
+    rid = store.create_request(body={"target": "stock", "capabilities": ["technical"],
+                                     "symbols": ["600519.SH"]}, session_id="s1")["request_id"]
+    job = _claim_and_jobs(store, rid)["jobs"][0]
+    bad = _export_payload("technical", "600519.SH")  # envelope 合法，消费者不可用
+    with pytest.raises(RefreshError) as exc:
+        store.export_job(rid, job["job_id"], bad, cache)
+    assert exc.value.code == "consumer_validation_failed"
+    assert path.read_bytes() == before
+    assert not list(path.parent.glob("*.tmp"))
+
+    good = _export_payload("technical", "600519.SH")
+    good["as_of"] = "2099-12-31"  # worker 提供值不得冒充业务日期
+    good["data"] = rich
+    info = store.export_job(rid, job["job_id"], good, cache)
+    assert info["data_as_of"] == "2026-08-05"
+    assert cache.read("technical", "600519.SH")["as_of"] == "2026-08-05"
+
+
+@pytest.mark.parametrize(("capability", "bad_data"), [
+    ("financials", {"summary": {"eps": 1.0}}),
+    ("northbound", {"cur": {"code": "sh600519"}}),
+    ("technical", {"sh600519": {"code": "sh600519", "date": "2026-08-05"}}),
+])
+def test_consumer_validator_rejects_correct_hash_but_unusable_payload(
+        tmp_path, capability, bad_data):
+    store = _mk_store(tmp_path)
+    cache = WestockCacheStore(tmp_path / "state" / "dashboard" / "westock")
+    rid = store.create_request(body={"target": "stock", "capabilities": [capability],
+                                     "symbols": ["600519.SH"]}, session_id="s1")["request_id"]
+    job = _claim_and_jobs(store, rid)["jobs"][0]
+    payload = _export_payload(capability, "600519.SH")
+    payload["data"] = bad_data
+    with pytest.raises(RefreshError) as exc:
+        store.export_job(rid, job["job_id"], payload, cache)
+    assert exc.value.code == "consumer_validation_failed"
+    assert cache.read(capability, "600519.SH") is None
 
 
 def test_export_content_hash_and_receipt_fields(tmp_path):
@@ -697,7 +755,7 @@ def test_cli_claim_lists_jobs_and_export_flow(tmp_path):
         "schema_version": 2, "capability": "quote", "scope": "600519.SH",
         "ok": True,
         "fetched_at": (datetime.now(_tz.utc) - timedelta(minutes=1)).isoformat(),
-        "as_of": "2026-08-05", "data": {"v": 1},
+        "as_of": "2026-08-05", "data": {"code": "sh600519", "last": 1},
     }), encoding="utf-8")
     out = _run_cli(tmp_path, "export", rid, "--job", job_id, "--input", str(raw))
     assert "content_hash" in out
@@ -711,7 +769,7 @@ def test_cli_claim_lists_jobs_and_export_flow(tmp_path):
         "schema_version": 2, "capability": "quote", "scope": "600519.SH",
         "ok": True,
         "fetched_at": (datetime.now(_tz.utc) - timedelta(minutes=1)).isoformat(),
-        "as_of": "2026-08-05", "data": {"v": 999},
+        "as_of": "2026-08-05", "data": {"code": "sh600519", "last": 999},
     }), encoding="utf-8")
     proc = _subprocess.run([_sys.executable, str(CLI), "export", rid, "--job", job_id,
                             "--input", str(raw2)], cwd=str(tmp_path),
@@ -731,7 +789,7 @@ def test_cli_complete_conflict_and_partial(tmp_path):
         "schema_version": 2, "capability": "quote", "scope": "600519.SH",
         "ok": True,
         "fetched_at": (datetime.now(_tz.utc) - timedelta(minutes=1)).isoformat(),
-        "as_of": "2026-08-05", "data": {"v": 1},
+        "as_of": "2026-08-05", "data": {"code": "sh600519", "last": 1},
     }), encoding="utf-8")
     _run_cli(tmp_path, "export", rid, "--job", quote_job, "--input", str(raw))
     summary = tmp_path / "quote_partial.json.summary.json"
@@ -870,6 +928,13 @@ def test_summary_only_market_data_keeps_only_quote(tmp_path):
     caps2 = {j["capability"] for j in req2["jobs"]}
     assert "minute" not in caps2 and "technical" not in caps2
     assert "lhb" in caps2  # 摘要能力保留
+    lhb = [j for j in req2["jobs"] if j["capability"] == "lhb"]
+    assert len(req2["jobs"]) == 18
+    assert len(lhb) == 1 and lhb[0]["scope"] == "global"
+    assert lhb[0]["summary_only"] is False
+    assert store._read_request_file(req2["request_id"]) is not None
+    claimed = store.claim(req2["request_id"], "b" * 64)
+    assert claimed is not None and len(claimed["jobs"]) == 18
     # 本地股票仍含 minute/technical
     req3 = store.create_request(body={"target": "stock", "preset": "market_data",
                                       "symbols": ["600519.SH"]}, session_id="s3")
@@ -888,6 +953,9 @@ def test_summary_only_mixed_symbols_jobs(tmp_path):
     assert not any(j["capability"] in ("minute", "technical") for j in summary_jobs)
     assert all(j["summary_only"] for j in summary_jobs)
     assert not any(j["summary_only"] for j in local_jobs)
+    lhb = [j for j in req["jobs"] if j["capability"] == "lhb"]
+    assert len(lhb) == 1 and lhb[0]["scope"] == "global"
+    assert lhb[0]["summary_only"] is False
 
 
 def test_summary_only_all_blocked_capabilities_rejected(tmp_path):
@@ -1133,3 +1201,46 @@ def test_receipt_write_failure_keeps_request_processing(tmp_path, monkeypatch):
     assert item["status"] == "processing"
     assert not store._receipt_path(rid).exists()
     assert (store._request_path(rid)).read_bytes() == request_before  # 旧文件逐字节不变
+
+
+def test_worker_interrupt_resume_without_repeat(tmp_path):
+    """真实 CLI/exporter 流程可在中断后续作，已完成缓存不重写。"""
+    store = _mk_store(tmp_path)
+    rid = store.create_request(body={"target": "stock", "preset": "basic",
+                                     "symbols": ["600519.SH"]}, session_id="s1")["request_id"]
+    _run_cli(tmp_path, "claim", rid)
+    jobs = {j["capability"]: j for j in store._read_request_file(rid)["jobs"]}
+
+    def export_and_complete(capability: str, data: object) -> Path:
+        raw = tmp_path / f"{capability}.json"
+        raw.write_text(json.dumps({
+            "schema_version": 2, "capability": capability, "scope": "600519.SH",
+            "ok": True, "fetched_at": (datetime.now(_tz.utc) - timedelta(minutes=1)).isoformat(),
+            "as_of": "2026-08-05", "data": data,
+        }), encoding="utf-8")
+        jid = jobs[capability]["job_id"]
+        _run_cli(tmp_path, "export", rid, "--job", jid, "--input", str(raw))
+        summary = raw.with_suffix(raw.suffix + ".summary.json")
+        _run_cli(tmp_path, "complete-job", rid, "--job", jid, "--result", "ok",
+                 "--export-info", str(summary))
+        return tmp_path / "state" / "dashboard" / "westock" / capability / "600519.SH.json"
+
+    quote_path = export_and_complete("quote", {"code": "sh600519", "last": 1.0})
+    before_hash = hashlib.sha256(quote_path.read_bytes()).hexdigest()
+    before_mtime = quote_path.stat().st_mtime_ns
+
+    # 新 worker 只读 list 后直接续作未完成 job；不重新 claim 整个 processing 请求。
+    listing = _run_cli(tmp_path, "list", "--status", "processing")
+    assert rid in listing
+    export_and_complete("profile", {"code": "sh600519", "name": "贵州茅台"})
+    for capability in ("news", "fund_flow"):
+        jid = jobs[capability]["job_id"]
+        _run_cli(tmp_path, "complete-job", rid, "--job", jid, "--result", "failed",
+                 "--warning", "上游无数据")
+
+    assert hashlib.sha256(quote_path.read_bytes()).hexdigest() == before_hash
+    assert quote_path.stat().st_mtime_ns == before_mtime
+    out = _run_cli(tmp_path, "finish", rid)
+    assert "partial" in out
+    receipt = json.loads(store._receipt_path(rid).read_text(encoding="utf-8"))
+    assert all(j["status"] in ("ok", "partial", "failed", "skipped") for j in receipt["jobs"])
