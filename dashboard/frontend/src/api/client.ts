@@ -242,6 +242,123 @@ export interface WestockCoverage {
   warnings?: string[];
 }
 
+// ---- F5-A 运营只读类型 ----
+
+export interface WestockOpsEnvelope<T> {
+  schema_version: number;
+  source: string;
+  as_of: string;
+  generated_at: string;
+  availability: string;
+  data: T;
+  warnings: string[];
+}
+
+export interface WestockOpsCache {
+  capability: string;
+  scope: string;
+  short_scope: string;
+  scope_id: string | null;
+  scope_type: string;
+  group: string;
+  file_state: string;
+  in_expected_matrix: boolean;
+  availability: string;
+  cache_status: string;
+  freshness_status: string | null;
+  consumer_status: string;
+  integrity: { valid: boolean; hash_verified: boolean; hash_status: string };
+  age_seconds: number | null;
+  ttl_seconds: number;
+  expires_at: string | null;
+  as_of: string | null;
+  fetched_at: string | null;
+  cached_at: string | null;
+  last_refresh_status: string;
+  failure_category: string | null;
+  local_history_available: boolean;
+  summary_only: boolean;
+}
+
+export interface WestockOpsCapability {
+  capability: string;
+  name: string;
+  group: string;
+  read_only: boolean;
+  ttl_seconds: number;
+  scope_count: number;
+  usable: number;
+  stale: number;
+  unavailable: number;
+  latest_ok_at: string | null;
+  latest_fail_at: string | null;
+  success_rate: number | null;
+}
+
+export interface WestockOpsSymbol {
+  symbol: string;
+  local_history_available: boolean;
+  expected_count: number;
+  usable: number;
+  stale: number;
+  unavailable: number;
+}
+
+export interface WestockOpsRequest {
+  request_id: string;
+  short_id: string;
+  status: string;
+  receipt_status: string;
+  target: string | null;
+  preset: string | null;
+  symbols: string | string[] | null;
+  job_counts: { ok: number; partial: number; failed: number; skipped: number; pending: number };
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  /** 脱敏：warning 只返回计数与固定分类；status_detail 只返回固定受控 code */
+  warning_count: number;
+  warning_categories: Record<string, number>;
+  status_detail_code: string;
+}
+
+export interface WestockOpsSummaryData {
+  physical_cache_count: number;
+  expected_cell_count: number;
+  total_cells: number;
+  unexpected_physical_count: number;
+  invalid_physical_count: number;
+  availability: { available: number; unavailable: number };
+  freshness: { fresh: number; stale: number; future_timestamp: number; invalid_timestamp: number; unavailable: number };
+  consumer_status: { usable: number; unusable: number; not_validated: number };
+  integrity: { hash_mismatch: number; hash_unverified: number; pending_evidence: number };
+  usable_fresh_stale: number;
+  valid_coverage: number | null;
+  capabilities: WestockOpsCapability[];
+  symbols: WestockOpsSymbol[];
+  requests: {
+    total: number;
+    status_counts: Record<string, number>;
+    receipt_status_counts: Record<string, number>;
+    job_counts: { ok: number; partial: number; failed: number; skipped: number; pending: number };
+    avg_duration_seconds: number | null;
+    recent_20: WestockOpsRequest[];
+  };
+  failures: {
+    job_failure_categories: Record<string, number>;
+    request_failure_categories: Record<string, number>;
+    failed_job_count: number;
+    failed_request_count: number;
+    receipt_audit_issues: Record<string, number>;
+    receipt_audit_issue_count: number;
+    orphan_receipt_count: number;
+    invalid_receipt_file_count: number;
+  };
+  ttl_expiring: { within_5min: number; within_1h: number; expired: number };
+  as_of_lag: { current_date: string | null; unknown_count: number; per_capability: Record<string, { as_of: string | null; lag_days: number | null }> };
+}
+
 // ---- Phase B 类型 ----
 
 export type StockRange = '1m' | '3m' | '6m' | '1y' | '3y' | 'all';
@@ -674,6 +791,43 @@ export const api = {
       `/api/connections/westock/refresh-requests/${requestId}`, {
         method: 'DELETE',
       }),
+  // ---- F5-A 运营只读端点 ----
+  westockOpsQuery: <T>(path: string, params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v != null && v !== '') q.set(k, String(v));
+    }
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request<WestockOpsEnvelope<T>>(`/api/connections/westock/operations/${path}${suffix}`);
+  },
+  westockOpsSummary: () =>
+    request<WestockOpsEnvelope<WestockOpsSummaryData>>('/api/connections/westock/operations/summary'),
+  westockOpsCaches: (params: {
+    capability?: string; symbol?: string; scope_type?: string; freshness?: string;
+    consumer_status?: string; failure_category?: string; limit?: number; offset?: number;
+  } = {}) => api.westockOpsQuery<{
+    total: number; coverage_total: number; inventory_total: number;
+    unexpected_physical_count: number;
+    limit: number; offset: number; items: WestockOpsCache[];
+  }>('caches', params),
+  westockOpsCapabilities: (params: { capability?: string; limit?: number; offset?: number } = {}) =>
+    api.westockOpsQuery<{ total: number; limit: number; offset: number; items: WestockOpsCapability[] }>('capabilities', params),
+  westockOpsSymbols: (params: { symbol?: string; limit?: number; offset?: number } = {}) =>
+    api.westockOpsQuery<{ total: number; limit: number; offset: number; items: WestockOpsSymbol[] }>('symbols', params),
+  westockOpsRequests: (params: {
+    request_status?: string; limit?: number; offset?: number;
+  } = {}) => api.westockOpsQuery<{ total: number; limit: number; offset: number; items: WestockOpsRequest[] }>('requests', params),
+  westockOpsFailures: () =>
+    api.westockOpsQuery<{
+      job_failure_categories: Record<string, number>;
+      request_failure_categories: Record<string, number>;
+      failed_job_count: number;
+      failed_request_count: number;
+      receipt_audit_issues: Record<string, number>;
+      receipt_audit_issue_count: number;
+      orphan_receipt_count: number;
+      invalid_receipt_file_count: number;
+    }>('failures'),
   // ---- Phase B：个股行情与策略联动（只读） ----
   stocksList: (params: { query?: string; limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams();

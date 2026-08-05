@@ -48,6 +48,7 @@ from .screener_service import MAX_BODY_BYTES, ScreenerError, ScreenerService, bu
 from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
+from .westock_operations_service import build_operations_service, operations_envelope
 from .westock_refresh_service import (
     RefreshError,
     build_coverage_scanner,
@@ -147,6 +148,8 @@ def create_app(
     app.state.westock_refresh = build_refresh_store(root)
     app.state.westock_coverage = build_coverage_scanner(
         root, app.state.westock_bridge.cache)
+    app.state.westock_ops = build_operations_service(
+        root, app.state.westock_bridge.cache, app.state.westock_refresh)
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
     app.state.market: MarketService = build_market_service(root)
@@ -295,6 +298,74 @@ def create_app(
             return JSONResponse(error_body(exc.code, exc.message),
                                 status_code=exc.status_code)
         return JSONResponse(result)
+
+    # ------------------------------------------------------------------ #
+    # F5-A 运营只读端点（全部认证；GET 无 CSRF；严格白名单参数）
+    # ------------------------------------------------------------------ #
+    @app.get("/api/connections/westock/operations/summary")
+    async def westock_ops_summary(request: Request) -> JSONResponse:
+        """运营总览：缓存质量/有效覆盖率/请求聚合/失败分布/TTL/业务日期滞后。"""
+        await _require_session(request, security, csrf_required=False)
+        if request.query_params:
+            return JSONResponse(error_body("invalid_request", "summary 不支持查询参数"),
+                                status_code=400)
+        data = app.state.westock_ops.summary()
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/operations/caches")
+    async def westock_ops_caches(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_ops.caches(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/operations/capabilities")
+    async def westock_ops_capabilities(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_ops.capabilities(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        # data 已是平铺 {total, limit, offset, items}；不得再嵌套一层 items
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/operations/symbols")
+    async def westock_ops_symbols(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_ops.symbols(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        # data 已是平铺 {total, limit, offset, items}；不得再嵌套一层 items
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/operations/requests")
+    async def westock_ops_requests(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_ops.requests(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/operations/failures")
+    async def westock_ops_failures(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        if request.query_params:
+            return JSONResponse(error_body("invalid_request", "failures 不支持查询参数"),
+                                status_code=400)
+        try:
+            data = app.state.westock_ops.failures()
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
 
     @app.get("/api/connections/westock/refresh-requests")
     async def westock_refresh_requests_list(request: Request) -> JSONResponse:

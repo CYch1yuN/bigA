@@ -872,3 +872,30 @@ h4 {
   min-width: 0;
   max-width: 100%;
 }
+
+/* F5-A 运营中心 Tab 栏 */
+.ops-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--border, #333);
+  padding-bottom: 8px;
+}
+.ops-tab {
+  appearance: none;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: var(--text-secondary, inherit);
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+.ops-tab:hover { color: var(--text-primary, inherit); }
+.ops-tab.active {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #fff;
+}
