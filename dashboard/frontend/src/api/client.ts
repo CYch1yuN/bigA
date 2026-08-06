@@ -359,6 +359,78 @@ export interface WestockOpsSummaryData {
   as_of_lag: { current_date: string | null; unknown_count: number; per_capability: Record<string, { as_of: string | null; lag_days: number | null }> };
 }
 
+// ---- F5-B 健康/告警/建议/趋势类型 ----
+
+export type HealthStatus = 'critical' | 'degraded' | 'attention' | 'healthy' | 'not_observed';
+
+export interface WestockHealthData {
+  overall_status: HealthStatus;
+  observed: boolean;
+  note: string;
+  dimensions: Record<string, {
+    status: HealthStatus;
+    explanation: string;
+    alert_categories: string[];
+    alert_count: number;
+  }>;
+  alert_summary: Record<string, number>;
+}
+
+export interface WestockAlert {
+  alert_id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  category: string;
+  title: string;
+  message: string;
+  capability: string | null;
+  symbol: string | null;
+  short_scope: string | null;
+  affected_count: number;
+  first_observed_at: string | null;
+  last_observed_at: string | null;
+  evidence: Record<string, unknown>;
+  recommendation_code: string;
+  is_actionable: boolean;
+}
+
+export interface WestockRecommendation {
+  recommendation_id: string;
+  code: string;
+  priority: string;
+  title: string;
+  reason: string;
+  affected_count: number;
+  target_kind: 'stock' | 'market' | 'screener' | null;
+  preset: string | null;
+  symbols: string[];
+  capabilities: string[];
+  short_scope: string | null;
+  can_prefill_refresh: boolean;
+  requires_workbuddy: boolean;
+  /** 预填个股刷新时是否需要 summary-only（含非本地股票时为 true） */
+  allow_summary_only: boolean;
+  warnings: string[];
+}
+
+export interface WestockTrendDay {
+  date: string;
+  requests_total: number;
+  status_counts: Record<string, number>;
+  job_counts: Record<string, number>;
+  worker_timeout_count: number;
+  receipt_issue_count: number;
+  success_rate: number | null;
+  average_duration_seconds: number | null;
+}
+
+export interface WestockTrendsData {
+  window_days: number;
+  start_date: string;
+  end_date: string;
+  timezone: string;
+  daily: WestockTrendDay[];
+}
+
 // ---- Phase B 类型 ----
 
 export type StockRange = '1m' | '3m' | '6m' | '1y' | '3y' | 'all';
@@ -828,6 +900,30 @@ export const api = {
       orphan_receipt_count: number;
       invalid_receipt_file_count: number;
     }>('failures'),
+  // ---- F5-B 健康/告警/建议/趋势（只读；不走 operations 路径） ----
+  westockHealth: () =>
+    request<WestockOpsEnvelope<WestockHealthData>>('/api/connections/westock/health'),
+  westockAlerts: (params: {
+    severity?: string; category?: string; capability?: string; symbol?: string;
+    limit?: number; offset?: number;
+  } = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v != null && v !== '') q.set(k, String(v));
+    return request<WestockOpsEnvelope<{ total: number; limit: number; offset: number; items: WestockAlert[] }>>(
+      `/api/connections/westock/alerts${q.toString() ? '?' + q.toString() : ''}`);
+  },
+  westockRecommendations: (params: {
+    priority?: string; code?: string; target_kind?: string;
+    limit?: number; offset?: number;
+  } = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v != null && v !== '') q.set(k, String(v));
+    return request<WestockOpsEnvelope<{ total: number; limit: number; offset: number; items: WestockRecommendation[] }>>(
+      `/api/connections/westock/recommendations${q.toString() ? '?' + q.toString() : ''}`);
+  },
+  westockTrends: (windowDays: 7 | 30) =>
+    request<WestockOpsEnvelope<WestockTrendsData>>(
+      `/api/connections/westock/trends?window_days=${windowDays}`),
   // ---- Phase B：个股行情与策略联动（只读） ----
   stocksList: (params: { query?: string; limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams();

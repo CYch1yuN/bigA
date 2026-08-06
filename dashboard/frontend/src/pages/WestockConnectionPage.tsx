@@ -1,17 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as echarts from 'echarts';
 import {
   api,
+  WestockAlert,
   WestockCapability,
+  WestockHealthData,
   WestockOpsCache,
   WestockOpsCapability,
   WestockOpsEnvelope,
   WestockOpsRequest,
   WestockOpsSummaryData,
   WestockOpsSymbol,
+  WestockRecommendation,
   WestockRefreshJob,
   WestockRefreshRequest,
   WestockTarget,
+  WestockTrendsData,
 } from '../api/client';
 import { PageHeader } from '../components/ui';
 import { fmtIsoTime } from '../components/StrongCards';
@@ -54,6 +59,35 @@ const reqSymbolsText = (s: string | string[] | null) => {
   if (s == null) return '';
   const list = Array.isArray(s) ? s : [s];
   return list.map((x) => (x.startsWith('q_') ? shortQ(x) : x)).join(',');
+};
+// F5-B 健康/告警/建议文本映射
+const HEALTH_STATUS_TEXT: Record<string, string> = {
+  critical: '严重', degraded: '降级', attention: '注意', healthy: '健康', not_observed: '未观测',
+};
+const SEVERITY_TEXT: Record<string, string> = {
+  critical: '严重', high: '高', medium: '中', low: '低',
+};
+const ALERT_CAT_TEXT: Record<string, string> = {
+  hash_mismatch: '哈希不一致', consumer_unusable: '消费者不可用', receipt_mismatch: '回执不一致',
+  invalid_cache_file: '缓存文件非法', future_timestamp: '未来时间戳', receipt_invalid: '回执非法',
+  recent_worker_timeout: 'Worker 超时', recent_refresh_failure: '刷新失败',
+  receipt_missing: '回执缺失', orphan_receipt: '孤立回执', invalid_receipt_file: '非法回执文件',
+  stale_cache: '缓存过期', missing_expected_cache: '预期缓存缺失', low_valid_coverage: '覆盖偏低',
+  capability_unavailable: '能力不可用', hash_unverified: '哈希未验证', pending_evidence: '证据待定',
+  partial_refresh: '部分刷新', unsupported_or_empty: '不支持或为空',
+};
+const REC_CODE_TEXT: Record<string, string> = {
+  refresh_invalid_cache: '刷新非法缓存', refresh_hash_mismatch: '刷新并核对哈希',
+  refresh_stale_capability: '刷新过期能力', refresh_missing_coverage: '补齐缺失覆盖',
+  retry_recent_failure: '重试最近失败', inspect_receipt_chain: '核查回执审计链',
+  inspect_consumer_schema: '核查数据模式', rerun_screener_export: '重新导出筛选结果',
+  no_action_required: '无需操作',
+};
+const severityTone = (s: string) => {
+  if (s === 'critical') return 'danger';
+  if (s === 'high') return 'warning';
+  if (s === 'medium') return 'warning';
+  return 'neutral';
 };
 const CONSUMER_TEXT: Record<string, string> = {
   usable: '可用', unusable: '不可用', not_validated: '未校验',
@@ -117,6 +151,32 @@ const MARKET_PRESETS = [
   { key: 'funds', label: '市场资金' },
   { key: 'full_market', label: '全部市场能力' },
 ];
+// 个股能力注册表（与后端 _STOCK_CAPS 一一对应；capabilities 模式只允许这些键）
+const STOCK_CAPABILITIES = [
+  { key: 'quote', label: '行情快照' },
+  { key: 'minute', label: '分时' },
+  { key: 'technical', label: '技术指标' },
+  { key: 'profile', label: '公司资料' },
+  { key: 'financials', label: '财务' },
+  { key: 'forecast', label: '盈利预测' },
+  { key: 'shareholders', label: '股东' },
+  { key: 'dividend', label: '分红' },
+  { key: 'buyback', label: '回购' },
+  { key: 'margin', label: '融资融券' },
+  { key: 'block_trade', label: '大宗交易' },
+  { key: 'fund_flow', label: '资金流' },
+  { key: 'northbound', label: '北向持股' },
+  { key: 'news', label: '新闻' },
+  { key: 'reports', label: '研报' },
+  { key: 'announcements', label: '公告' },
+  { key: 'events', label: '事件' },
+  { key: 'risk', label: '风险' },
+  { key: 'lhb', label: '龙虎榜' },
+  { key: 'chip_distribution', label: '筹码分布' },
+] as const;
+const STOCK_CAP_KEYS: readonly string[] = STOCK_CAPABILITIES.map((c) => c.key);
+const MAX_CAPABILITIES = 20;
+
 const SYMBOL_RE = /^[0-9]{6}\.(SH|SZ|BJ)$/;
 
 const TABS = [
@@ -126,6 +186,10 @@ const TABS = [
   { key: 'symbols', label: '股票覆盖' },
   { key: 'history', label: '刷新历史' },
   { key: 'failures', label: '失败分析' },
+  { key: 'health', label: '健康状态' },
+  { key: 'alerts', label: '活动告警' },
+  { key: 'recommendations', label: '维护建议' },
+  { key: 'trends', label: '刷新趋势' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -476,9 +540,252 @@ function FailuresTab({ active }: { active: boolean }) {
 }
 
 // ------------------------------------------------------------------ //
+// F5-B Tab：健康状态
+// ------------------------------------------------------------------ //
+function HealthTab({ active }: { active: boolean }) {
+  const q = useOps<WestockHealthData>('health', api.westockHealth, active);
+  const d = q.data?.data;
+  const dimOrder = ['integrity', 'consumer', 'freshness', 'coverage', 'refresh_workflow'] as const;
+  const dimLabel: Record<string, string> = {
+    integrity: '完整性', consumer: '消费者', freshness: '时效', coverage: '覆盖', refresh_workflow: '刷新闭环',
+  };
+  return (
+    <div className="card section-card">
+      <div className="card-title">健康状态</div>
+      {q.isLoading ? <div className="card loading-state">正在评估健康状态…</div>
+        : q.isError ? <div className="alert alert-error">健康状态读取失败；不影响本地研究主链。</div>
+          : !d ? <OpsEmpty text="暂无健康数据。" /> : (
+            <>
+              <div className="metric-grid">
+                <Metric label="总体状态" value={HEALTH_STATUS_TEXT[d.overall_status] ?? d.overall_status}
+                  hint={d.note} tone={d.overall_status === 'critical' ? 'danger' : d.overall_status === 'degraded' ? 'warning' : d.overall_status === 'attention' ? 'warning' : 'neutral'} />
+                {(['critical', 'high', 'medium', 'low'] as const).map((s) => (
+                  <Metric key={s} label={`${SEVERITY_TEXT[s]}级告警`} value={d.alert_summary[s] ?? 0} tone={s === 'critical' ? 'danger' : s === 'high' ? 'warning' : 'neutral'} />
+                ))}
+              </div>
+              <div className="card-title compact">五个维度</div>
+              <div className="table-wrap">
+                <table className="table connection-table">
+                  <thead><tr><th>维度</th><th>状态</th><th>说明</th><th>告警数</th></tr></thead>
+                  <tbody>{dimOrder.map((dim) => {
+                    const v = d.dimensions[dim];
+                    if (!v) return null;
+                    return (
+                      <tr key={dim}>
+                        <td><strong>{dimLabel[dim]}</strong></td>
+                        <td><span className={`badge badge-${v.status === 'critical' ? 'danger' : v.status === 'healthy' ? 'success' : 'warning'}`}>{HEALTH_STATUS_TEXT[v.status] ?? v.status}</span></td>
+                        <td className="muted">{v.explanation}</td>
+                        <td><span className="badge badge-neutral">{v.alert_count}</span></td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+              <p className="body-copy muted">Westock 异常不影响本地 curated、回测与模拟账本。</p>
+            </>
+          )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ //
+// F5-B Tab：活动告警
+// ------------------------------------------------------------------ //
+function AlertsTab({ active }: { active: boolean }) {
+  const [offset, setOffset] = useState(0);
+  const [sevFilter, setSevFilter] = useState('');
+  const [catFilter, setCatFilter] = useState('');
+  const [capFilter, setCapFilter] = useState('');
+  const PAGE = 20;
+  const q = useOps<{ total: number; limit: number; offset: number; items: WestockAlert[] }>(
+    `alerts-${offset}-${sevFilter}-${catFilter}-${capFilter}`,
+    () => api.westockAlerts({
+      severity: sevFilter || undefined, category: catFilter || undefined,
+      capability: capFilter || undefined, limit: PAGE, offset,
+    }),
+    active);
+  const items = q.data?.data.items ?? [];
+  const total = q.data?.data.total ?? 0;
+  return (
+    <div className="card section-card">
+      <div className="card-title">活动告警</div>
+      <p className="body-copy muted">告警由固定规则生成，仅展示受控信息，不包含原始 warning 或完整 scope。</p>
+      <div className="refresh-form-row">
+        <label className="deep-field-label">严重度
+          <select value={sevFilter} onChange={(e) => { setSevFilter(e.target.value); setOffset(0); }}>
+            <option value="">全部</option>
+            {(['critical', 'high', 'medium', 'low'] as const).map((s) => (
+              <option key={s} value={s}>{SEVERITY_TEXT[s]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="deep-field-label">类型
+          <input value={catFilter} placeholder="如 hash_mismatch" onChange={(e) => { setCatFilter(e.target.value.trim()); setOffset(0); }} />
+        </label>
+        <label className="deep-field-label">能力
+          <input value={capFilter} placeholder="如 quote" onChange={(e) => { setCapFilter(e.target.value.trim()); setOffset(0); }} />
+        </label>
+      </div>
+      {q.isLoading ? <div className="card loading-state">正在读取告警…</div>
+        : q.isError ? <div className="alert alert-error">告警读取失败；不影响本地研究主链。</div>
+          : items.length === 0 ? <OpsEmpty text="暂无活动告警。" /> : (
+            <div className="table-wrap">
+              <table className="table connection-table">
+                <thead><tr><th>级别</th><th>类型</th><th>标题</th><th>能力</th><th>影响</th><th>说明</th></tr></thead>
+                <tbody>{items.map((a) => (
+                  <tr key={a.alert_id}>
+                    <td><span className={`badge badge-${severityTone(a.severity)}`}>{SEVERITY_TEXT[a.severity] ?? a.severity}</span></td>
+                    <td><strong>{ALERT_CAT_TEXT[a.category] ?? a.category}</strong></td>
+                    <td>{a.title}</td>
+                    <td className="muted">{a.capability ? capLabel(a.capability) : '—'}</td>
+                    <td><span className="badge badge-neutral">{a.affected_count}</span></td>
+                    <td className="muted">{a.message}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+      <div className="stock-chart-controls">
+        <div className="btn-group">
+          <button className="btn btn-sm" disabled={offset <= 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>上一页</button>
+          <button className="btn btn-sm" disabled={offset + PAGE >= total} onClick={() => setOffset(offset + PAGE)}>下一页</button>
+        </div>
+        <span className="muted">第 {Math.floor(offset / PAGE) + 1} 页 · 共 {total} 条</span>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ //
+// F5-B Tab：维护建议
+// ------------------------------------------------------------------ //
+interface PrefillPayload {
+  target: string;
+  preset?: string;
+  symbols?: string[];
+  capabilities?: string[];
+  allow_summary_only?: boolean;
+}
+function RecommendationsTab({ active, onPrefill }: {
+  active: boolean;
+  onPrefill: (r: WestockRecommendation) => void;
+}) {
+  const [offset, setOffset] = useState(0);
+  const PAGE = 20;
+  const q = useOps<{ total: number; limit: number; offset: number; items: WestockRecommendation[] }>(
+    `recs-${offset}`, () => api.westockRecommendations({ limit: PAGE, offset }), active);
+  const items = q.data?.data.items ?? [];
+  const total = q.data?.data.total ?? 0;
+  return (
+    <div className="card section-card">
+      <div className="card-title">维护建议</div>
+      <p className="body-copy muted">建议由告警固定映射生成；“填入刷新表单”仅预填、需你再次确认提交，绝不自动执行。</p>
+      {q.isLoading ? <div className="card loading-state">正在读取建议…</div>
+        : q.isError ? <div className="alert alert-error">建议读取失败；不影响本地研究主链。</div>
+          : items.length === 0 ? <OpsEmpty text="暂无维护建议。" /> : (
+            <div className="table-wrap">
+              <table className="table connection-table">
+                <thead><tr><th>优先级</th><th>建议</th><th>原因</th><th>影响</th><th>操作</th></tr></thead>
+                <tbody>{items.map((r) => (
+                  <tr key={r.recommendation_id}>
+                    <td><span className={`badge badge-${severityTone(r.priority)}`}>{SEVERITY_TEXT[r.priority] ?? r.priority}</span></td>
+                    <td><strong>{REC_CODE_TEXT[r.code] ?? r.code}</strong></td>
+                    <td className="muted">{r.reason}</td>
+                    <td><span className="badge badge-neutral">{r.affected_count}</span></td>
+                    <td>
+                      {r.can_prefill_refresh
+                        ? <button className="btn btn-sm" onClick={() => onPrefill(r)}>填入刷新表单</button>
+                        : <span className="muted">
+                          {r.target_kind === 'screener'
+                            ? '通过原筛选结果重新导出'
+                            : r.requires_workbuddy ? '需人工处理' : '仅检查说明'}
+                        </span>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+      <div className="stock-chart-controls">
+        <div className="btn-group">
+          <button className="btn btn-sm" disabled={offset <= 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>上一页</button>
+          <button className="btn btn-sm" disabled={offset + PAGE >= total} onClick={() => setOffset(offset + PAGE)}>下一页</button>
+        </div>
+        <span className="muted">第 {Math.floor(offset / PAGE) + 1} 页 · 共 {total} 条</span>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ //
+// F5-B Tab：刷新趋势
+// ------------------------------------------------------------------ //
+function TrendsTab({ active }: { active: boolean }) {
+  const [windowDays, setWindowDays] = useState<7 | 30>(7);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<echarts.ECharts | null>(null);
+  const q = useOps<WestockTrendsData>(
+    `trends-${windowDays}`, () => api.westockTrends(windowDays), active);
+  const d = q.data?.data;
+
+  useEffect(() => () => { chartRef.current?.dispose(); chartRef.current = null; }, []);
+  useEffect(() => {
+    const onResize = () => chartRef.current?.resize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!active || !d || !containerRef.current) return;
+    const hasData = d.daily.some((x) => x.requests_total > 0);
+    if (!hasData) { chartRef.current?.dispose(); chartRef.current = null; return; }
+    if (!chartRef.current) chartRef.current = echarts.init(containerRef.current);
+    const dates = d.daily.map((x) => x.date.slice(5));
+    const reqs = d.daily.map((x) => x.requests_total);
+    const rates = d.daily.map((x) => (x.success_rate == null ? null : +(x.success_rate * 100).toFixed(1)));
+    chartRef.current.setOption({
+      grid: { left: 40, right: 40, top: 30, bottom: 30 },
+      tooltip: { trigger: 'axis', renderMode: 'richText' },
+      legend: { data: ['请求数', '成功率 %'] },
+      xAxis: { type: 'category', data: dates },
+      yAxis: [{ type: 'value', name: '请求' }, { type: 'value', name: '%', max: 100 }],
+      series: [
+        { name: '请求数', type: 'bar', data: reqs },
+        { name: '成功率 %', type: 'line', yAxisIndex: 1, data: rates, smooth: true },
+      ],
+    });
+  }, [d, active, windowDays]);
+
+  const hasAny = d?.daily.some((x) => x.requests_total > 0) ?? false;
+  return (
+    <div className="card section-card">
+      <div className="card-title">刷新趋势（只读）</div>
+      <p className="body-copy muted">仅反映刷新请求/job 历史；系统未保存历史缓存快照，不展示缓存时效趋势。</p>
+      <div className="refresh-form-row">
+        <div className="btn-group">
+          <button className={`btn btn-sm${windowDays === 7 ? ' active' : ''}`} onClick={() => setWindowDays(7)}>近 7 天</button>
+          <button className={`btn btn-sm${windowDays === 30 ? ' active' : ''}`} onClick={() => setWindowDays(30)}>近 30 天</button>
+        </div>
+        {d && <span className="muted">{d.start_date} ~ {d.end_date}（上海时区）</span>}
+      </div>
+      {q.isLoading ? <div className="card loading-state">正在读取趋势…</div>
+        : q.isError ? <div className="alert alert-error">趋势读取失败；不影响本地研究主链。</div>
+          : !d ? <OpsEmpty text="暂无趋势数据。" />
+            : !hasAny ? <OpsEmpty text="该窗口内暂无刷新历史。" />
+              : (
+                <div ref={containerRef} className="ops-chart" style={{ height: 280 }} aria-label="刷新趋势图" />
+              )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ //
 // Tab：连接状态（既有内容）
 // ------------------------------------------------------------------ //
-function ConnectionStatusTab() {
+function ConnectionStatusTab({ prefill, onPrefillConsumed }: {
+  prefill: PrefillPayload | null;
+  onPrefillConsumed: () => void;
+}) {
   const client = useQueryClient();
   const [notice, setNotice] = useState('');
   const [noticeTone, setNoticeTone] = useState<'success' | 'error'>('success');
@@ -487,8 +794,46 @@ function ConnectionStatusTab() {
   const [symbolsText, setSymbolsText] = useState('');
   const [allowSummary, setAllowSummary] = useState(false);
   const [resultId, setResultId] = useState('');
+  // 个股刷新两种互斥模式：preset（预设组合） / capabilities（指定能力）
+  const [stockMode, setStockMode] = useState<'preset' | 'capabilities'>('preset');
+  const [capabilities, setCapabilities] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const PAGE_SIZE = 5;
+
+  // 建议预填：仅填充表单，绝不自动提交
+  useEffect(() => {
+    if (!prefill) return;
+    if (prefill.target === 'stock' && (prefill.symbols?.length || prefill.capabilities?.length)) {
+      setTarget('stock');
+      // 能力来自注册表 → 去重 → 最多 20；命中即切到 capabilities 模式并勾选
+      const caps = [...new Set(prefill.capabilities ?? [])]
+        .filter((c) => STOCK_CAP_KEYS.includes(c))
+        .slice(0, MAX_CAPABILITIES);
+      if (caps.length > 0) {
+        setStockMode('capabilities');
+        setCapabilities(caps);
+      } else if (prefill.preset) {
+        setStockMode('preset');
+        setPreset(prefill.preset);
+      }
+      if (prefill.symbols?.length) setSymbolsText(prefill.symbols.join(','));
+      setAllowSummary(prefill.allow_summary_only === true);
+      setNotice(caps.length > 0
+        ? `已按维护建议预填：指定能力 ${caps.join('、')}；请确认后点击“创建刷新请求”提交。`
+        : '已按维护建议预填刷新表单；请确认后提交。');
+      setNoticeTone('success');
+    } else if (prefill.target === 'market' && prefill.preset) {
+      setTarget('market');
+      setPreset(prefill.preset);
+      setNotice('已按维护建议预填市场刷新表单；请确认后提交。');
+      setNoticeTone('success');
+    } else if (prefill.target === 'screener') {
+      setTarget('screener');
+      setNotice('选股类建议需通过原筛选结果重新导出；请填写 result_id。');
+      setNoticeTone('success');
+    }
+    onPrefillConsumed();
+  }, [prefill, onPrefillConsumed]);
 
   const query = useQuery({
     queryKey: ['westock-connection'], queryFn: api.westockConnection, refetchInterval: 60_000,
@@ -572,6 +917,17 @@ function ConnectionStatusTab() {
         setNoticeTone('error');
         return;
       }
+      if (stockMode === 'capabilities') {
+        // 后端要求 preset 与 capabilities 严格二选一：此模式绝不携带 preset
+        const caps = [...new Set(capabilities)].filter((c) => STOCK_CAP_KEYS.includes(c));
+        if (caps.length === 0 || caps.length > MAX_CAPABILITIES) {
+          setNotice(`请选择 1–${MAX_CAPABILITIES} 个能力。`);
+          setNoticeTone('error');
+          return;
+        }
+        create.mutate({ target, capabilities: caps, symbols, allow_summary_only: allowSummary });
+        return;
+      }
       create.mutate({ target, preset, symbols, allow_summary_only: allowSummary });
       return;
     }
@@ -626,7 +982,19 @@ function ConnectionStatusTab() {
               <option value="screener">选股结果</option>
             </select>
           </label>
-          {target !== 'screener' && (
+          {target === 'stock' && (
+            <label className="deep-field-label">刷新方式
+              <select
+                value={stockMode}
+                aria-label="个股刷新方式"
+                onChange={(e) => setStockMode(e.target.value as 'preset' | 'capabilities')}
+              >
+                <option value="preset">按预设组合</option>
+                <option value="capabilities">指定能力</option>
+              </select>
+            </label>
+          )}
+          {(target === 'market' || (target === 'stock' && stockMode === 'preset')) && (
             <label className="deep-field-label">预设
               <select value={preset} onChange={(e) => setPreset(e.target.value)}>
                 {currentPresets.map((p) => (
@@ -655,6 +1023,34 @@ function ConnectionStatusTab() {
             {create.isPending ? '提交中…' : '创建刷新请求'}
           </button>
         </div>
+        {target === 'stock' && stockMode === 'capabilities' && (
+          <div className="refresh-capabilities" data-testid="stock-capabilities">
+            <p className="body-copy muted">
+              指定能力模式：请求只包含所选能力（不发送预设）；可自行增删，最多 {MAX_CAPABILITIES} 个。
+              已选 {capabilities.length} 个。
+            </p>
+            <div className="refresh-form-row wrap">
+              {STOCK_CAPABILITIES.map((c) => {
+                const checked = capabilities.includes(c.key);
+                return (
+                  <label key={c.key} className="deep-field-label checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={`能力 ${c.key}`}
+                      onChange={(e) => setCapabilities((prev) => (
+                        e.target.checked
+                          ? (prev.includes(c.key) ? prev : [...prev, c.key].slice(0, MAX_CAPABILITIES))
+                          : prev.filter((k) => k !== c.key)
+                      ))}
+                    />
+                    {c.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card section-card">
@@ -768,6 +1164,18 @@ function ConnectionStatusTab() {
 // ------------------------------------------------------------------ //
 export function WestockConnectionPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('connection');
+  const [prefill, setPrefill] = useState<PrefillPayload | null>(null);
+  const handlePrefill = (r: WestockRecommendation) => {
+    const target = r.target_kind === 'market' ? 'market' : r.target_kind === 'screener' ? 'screener' : 'stock';
+    setPrefill({
+      target,
+      preset: r.preset ?? undefined,
+      symbols: r.symbols,
+      capabilities: r.capabilities,
+      allow_summary_only: r.allow_summary_only === true,
+    });
+    setActiveTab('connection');
+  };
   return (
     <div>
       <PageHeader title="Westock 数据连接" description="腾讯自选股研究数据旁路 · 不写入回测与模拟账户主链" />
@@ -784,12 +1192,16 @@ export function WestockConnectionPage() {
           </button>
         ))}
       </nav>
-      {activeTab === 'connection' && <ConnectionStatusTab />}
+      {activeTab === 'connection' && <ConnectionStatusTab prefill={prefill} onPrefillConsumed={() => setPrefill(null)} />}
       {activeTab === 'caches' && <CachesTab active />}
       {activeTab === 'capabilities' && <CapabilitiesTab active />}
       {activeTab === 'symbols' && <SymbolsTab active />}
       {activeTab === 'history' && <HistoryTab active />}
       {activeTab === 'failures' && <FailuresTab active />}
+      {activeTab === 'health' && <HealthTab active />}
+      {activeTab === 'alerts' && <AlertsTab active />}
+      {activeTab === 'recommendations' && <RecommendationsTab active onPrefill={handlePrefill} />}
+      {activeTab === 'trends' && <TrendsTab active />}
     </div>
   );
 }

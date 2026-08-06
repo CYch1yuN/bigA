@@ -49,6 +49,7 @@ from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_sto
 from .stocks_service import CuratedStocksService, build_stocks_service
 from .westock_bridge import build_westock_bridge
 from .westock_operations_service import build_operations_service, operations_envelope
+from .westock_health_service import build_health_service
 from .westock_refresh_service import (
     RefreshError,
     build_coverage_scanner,
@@ -150,6 +151,7 @@ def create_app(
         root, app.state.westock_bridge.cache)
     app.state.westock_ops = build_operations_service(
         root, app.state.westock_bridge.cache, app.state.westock_refresh)
+    app.state.westock_health = build_health_service(app.state.westock_ops)
     app.state.stocks_service: CuratedStocksService = build_stocks_service(root)
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
     app.state.market: MarketService = build_market_service(root)
@@ -362,6 +364,52 @@ def create_app(
                                 status_code=400)
         try:
             data = app.state.westock_ops.failures()
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
+
+    # ------------------------------------------------------------------ #
+    # F5-B 健康评估/告警/建议/趋势（只读；GET 无 CSRF；严格白名单参数）
+    # ------------------------------------------------------------------ #
+    @app.get("/api/connections/westock/health")
+    async def westock_health(request: Request) -> JSONResponse:
+        """健康总览：五维状态 + 总体严重度（不接受任何查询参数）。"""
+        await _require_session(request, security, csrf_required=False)
+        if request.query_params:
+            return JSONResponse(error_body("invalid_request", "health 不支持查询参数"),
+                                status_code=400)
+        data = app.state.westock_health.health()
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/alerts")
+    async def westock_alerts(request: Request) -> JSONResponse:
+        """活动告警：固定规则生成；支持 severity/category/capability/symbol 过滤与分页。"""
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_health.alerts_api(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/recommendations")
+    async def westock_recommendations(request: Request) -> JSONResponse:
+        """维护建议：仅由告警固定映射生成；支持 priority/code/target_kind 过滤与分页。"""
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_health.recommendations_api(dict(request.query_params))
+        except RefreshError as exc:
+            return JSONResponse(error_body(exc.code, exc.message),
+                                status_code=exc.status_code)
+        return JSONResponse(operations_envelope(data))
+
+    @app.get("/api/connections/westock/trends")
+    async def westock_trends(request: Request) -> JSONResponse:
+        """刷新趋势：7/30 天按上海自然日聚合（只反映刷新工作流历史）。"""
+        await _require_session(request, security, csrf_required=False)
+        try:
+            data = app.state.westock_health.trends_api(dict(request.query_params))
         except RefreshError as exc:
             return JSONResponse(error_body(exc.code, exc.message),
                                 status_code=exc.status_code)

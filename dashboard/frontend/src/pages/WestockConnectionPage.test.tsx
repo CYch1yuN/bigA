@@ -18,9 +18,15 @@ vi.mock('../api/client', async () => {
       westockOpsSummary: vi.fn(), westockOpsCaches: vi.fn(),
       westockOpsCapabilities: vi.fn(), westockOpsSymbols: vi.fn(),
       westockOpsRequests: vi.fn(), westockOpsFailures: vi.fn(),
+      westockHealth: vi.fn(), westockAlerts: vi.fn(),
+      westockRecommendations: vi.fn(), westockTrends: vi.fn(),
     },
   };
 });
+
+// mock echarts：断言 init/setOption/resize/dispose 生命周期真实被调用
+const echartsInit = vi.hoisted(() => vi.fn(() => ({ setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() })));
+vi.mock('echarts', () => ({ init: echartsInit }));
 
 const STATUS: WestockConnectionStatus = {
   ok: true, schema_version: 1, source: 'westock-mcp', as_of: '2026-08-03T04:00:00Z',
@@ -516,5 +522,398 @@ describe('Westock 运营中心（F5-A）', () => {
     expect(screen.getByRole('tab', { name: '能力覆盖' })).toBeInTheDocument();
     rendered.unmount();
     document.documentElement.removeAttribute('data-theme');
+  });
+});
+
+// ===================================================================== //
+// F5-B 健康中心
+// ===================================================================== //
+const OPS_HEALTH = OPS_ENVELOPE({
+  overall_status: 'degraded', observed: true, note: 'Westock 异常不影响本地 curated、回测与模拟账本。',
+  dimensions: {
+    integrity: { status: 'critical', explanation: '缓存文件、哈希证据与回执审计的完整性。', alert_categories: ['hash_mismatch'], alert_count: 1 },
+    consumer: { status: 'healthy', explanation: '正式消费者校验。', alert_categories: [], alert_count: 0 },
+    freshness: { status: 'attention', explanation: '缓存时间戳与 TTL 时效。', alert_categories: ['stale_cache'], alert_count: 2 },
+    coverage: { status: 'healthy', explanation: '预期覆盖矩阵。', alert_categories: [], alert_count: 0 },
+    refresh_workflow: { status: 'attention', explanation: '刷新请求/回执闭环。', alert_categories: ['partial_refresh'], alert_count: 1 },
+  },
+  alert_summary: { critical: 1, high: 0, medium: 3, low: 0 },
+});
+
+const OPS_ALERTS = OPS_ENVELOPE({
+  total: 2, limit: 20, offset: 0, items: [
+    {
+      alert_id: 'hash_mismatch-abc12345', severity: 'critical', category: 'hash_mismatch',
+      title: '缓存哈希不一致', message: '预期单元缓存数据与可信导出证据不一致。',
+      capability: 'quote', symbol: '600519.SH', short_scope: null, affected_count: 1,
+      first_observed_at: '2026-08-06T00:00:00Z', last_observed_at: '2026-08-06T00:00:00Z',
+      evidence: { cell_count: 1 }, recommendation_code: 'refresh_hash_mismatch', is_actionable: true,
+    },
+    {
+      alert_id: 'stale_cache-00000000', severity: 'medium', category: 'stale_cache',
+      title: '缓存已过期', message: '该能力存在超过 TTL 的缓存单元。',
+      capability: 'quote', symbol: null, short_scope: null, affected_count: 3,
+      first_observed_at: null, last_observed_at: null,
+      evidence: { count: 3 }, recommendation_code: 'refresh_stale_capability', is_actionable: true,
+    },
+  ],
+});
+
+const OPS_RECS = OPS_ENVELOPE({
+  total: 2, limit: 20, offset: 0, items: [
+    {
+      recommendation_id: 'refresh_stale_capability-abc', code: 'refresh_stale_capability', priority: 'medium',
+      title: '刷新过期能力', reason: '存在超过 TTL 的缓存单元。', affected_count: 3,
+      target_kind: 'stock', preset: null, symbols: ['600519.SH'], capabilities: ['quote'],
+      short_scope: null, can_prefill_refresh: true, requires_workbuddy: false,
+      allow_summary_only: false, warnings: [],
+    },
+    {
+      recommendation_id: 'inspect_receipt_chain-def', code: 'inspect_receipt_chain', priority: 'critical',
+      title: '核查回执审计链', reason: '回执缺失需人工核查。', affected_count: 1,
+      target_kind: null, preset: null, symbols: [], capabilities: [],
+      short_scope: null, can_prefill_refresh: false, requires_workbuddy: false,
+      allow_summary_only: false, warnings: [],
+    },
+  ],
+});
+
+const zeroTrendDay = (date: string, reqs = 0) => ({
+  date,
+  requests_total: reqs,
+  status_counts: { completed: reqs, partial: 0, failed: 0, cancelled: 0, expired: 0 },
+  job_counts: { ok: reqs * 2, partial: 0, failed: 0, skipped: 0 },
+  worker_timeout_count: 0, receipt_issue_count: 0,
+  success_rate: reqs ? 1 : null, average_duration_seconds: reqs ? 30 : null,
+});
+const OPS_TRENDS_7 = OPS_ENVELOPE({
+  window_days: 7, start_date: '2026-07-31', end_date: '2026-08-06', timezone: 'Asia/Shanghai',
+  daily: [
+    zeroTrendDay('2026-07-31'), zeroTrendDay('2026-08-01'), zeroTrendDay('2026-08-02'),
+    zeroTrendDay('2026-08-03'), zeroTrendDay('2026-08-04'), zeroTrendDay('2026-08-05', 2),
+    zeroTrendDay('2026-08-06', 2),
+  ],
+});
+const OPS_TRENDS_30 = OPS_ENVELOPE({
+  window_days: 30, start_date: '2026-07-08', end_date: '2026-08-06', timezone: 'Asia/Shanghai',
+  daily: [zeroTrendDay('2026-07-08'), zeroTrendDay('2026-07-09'), zeroTrendDay('2026-07-10', 1)],
+});
+
+async function mockOpsF5B() {
+  (api.westockHealth as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_HEALTH);
+  (api.westockAlerts as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_ALERTS);
+  (api.westockRecommendations as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_RECS);
+  (api.westockTrends as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_TRENDS_7);
+}
+
+describe('Westock 健康中心（F5-B）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    echartsInit.mockClear();
+  });
+
+  it('初始不请求 F5-B API；点击 Tab 首次请求，返回不重复请求', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    expect(api.westockHealth).not.toHaveBeenCalled();
+    expect(api.westockAlerts).not.toHaveBeenCalled();
+    expect(api.westockRecommendations).not.toHaveBeenCalled();
+    expect(api.westockTrends).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('tab', { name: '健康状态' }));
+    await waitFor(() => expect(api.westockHealth).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('tab', { name: '连接状态' }));
+    await screen.findByText('连接说明');
+    fireEvent.click(screen.getByRole('tab', { name: '健康状态' }));
+    await screen.findAllByText('健康状态');
+    await waitFor(() => expect(api.westockHealth).toHaveBeenCalledTimes(1)); // staleTime 不重复
+  });
+
+  it('十个中文 Tab 标签存在', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    for (const label of ['连接状态', '缓存质量', '能力覆盖', '股票覆盖', '刷新历史', '失败分析',
+      '健康状态', '活动告警', '维护建议', '刷新趋势']) {
+      expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('健康状态中文显示总体与五维', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '健康状态' }));
+    expect(await screen.findByText('总体状态')).toBeInTheDocument();
+    expect(screen.getByText('降级')).toBeInTheDocument(); // overall degraded
+    expect(screen.getByText('严重')).toBeInTheDocument(); // integrity critical + critical 告警
+    expect(screen.getByText('完整性')).toBeInTheDocument();
+    expect(screen.getByText('刷新闭环')).toBeInTheDocument();
+    expect(screen.getAllByText(/不影响本地 curated/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('活动告警中文 severity/category + 严重度过滤', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '活动告警' }));
+    expect(await screen.findByText('缓存哈希不一致')).toBeInTheDocument();
+    expect(screen.getByText('哈希不一致')).toBeInTheDocument(); // 中文 category
+    expect(screen.getByText('缓存已过期')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('严重度'), { target: { value: 'critical' } });
+    await waitFor(() => expect(api.westockAlerts).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 'critical', limit: 20, offset: 0 })));
+    const body = document.body.textContent ?? '';
+    expect(body).not.toContain('NaN');
+    expect(body).not.toContain('undefined');
+  });
+
+  it('维护建议：可预填有按钮且不 POST；不可刷新建议无按钮', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    expect(await screen.findByText('刷新过期能力')).toBeInTheDocument();
+    expect(screen.getByText('核查回执审计链')).toBeInTheDocument();
+    // 只有一个"填入刷新表单"按钮（可预填项）；不可刷新项显示"仅检查说明"
+    expect(screen.getAllByRole('button', { name: '填入刷新表单' })).toHaveLength(1);
+    expect(screen.getByText('仅检查说明')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '填入刷新表单' }));
+    // 切到连接 Tab 并预填，但绝不自动 POST
+    expect(await screen.findByText(/已按维护建议预填：指定能力/)).toBeInTheDocument();
+    expect(api.westockCreateRefreshRequest).not.toHaveBeenCalled();
+    const input = screen.getByPlaceholderText('600519.SH,000001.SZ') as HTMLInputElement;
+    expect(input.value).toContain('600519.SH');
+  });
+
+  it('刷新趋势：7/30 天切换与 ECharts 生命周期', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '刷新趋势' }));
+    expect(await screen.findByText('刷新趋势（只读）')).toBeInTheDocument();
+    expect(screen.getByText('近 7 天')).toBeInTheDocument();
+    await waitFor(() => expect(api.westockTrends).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(echartsInit).toHaveBeenCalled()); // 有数据 → 初始化图表
+    fireEvent.click(screen.getByRole('button', { name: '近 30 天' }));
+    (api.westockTrends as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_TRENDS_30);
+    await waitFor(() => expect(api.westockTrends).toHaveBeenCalledWith(30));
+  });
+
+  it('无英文 category、完整 q scope、原始 JSON', async () => {
+    await mockOpsF5B();
+    await renderPage();
+    for (const tab of ['健康状态', '活动告警', '维护建议', '刷新趋势']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      await screen.findAllByText(tab);
+    }
+    const body = document.body.textContent ?? '';
+    for (const bad of ['NaN', 'undefined', '[object Object]', 'q_' + 'a'.repeat(64)]) {
+      expect(body).not.toContain(bad);
+    }
+    expect(body).not.toContain('"alert_id"');
+    expect(body).not.toContain('"evidence"');
+  });
+
+  it('移动端 390px 渲染正常（长文案与告警边界说明不溢出）', async () => {
+    await mockOpsF5B();
+    window.innerWidth = 390;
+    window.innerHeight = 844;
+    const rendered = await renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '健康状态' }));
+    await screen.findByText('总体状态');
+    fireEvent.click(screen.getByRole('tab', { name: '活动告警' }));
+    await screen.findByText('缓存哈希不一致');
+    const body = document.body.textContent ?? '';
+    for (const bad of ['NaN', 'undefined', '[object Object]']) {
+      expect(body).not.toContain(bad);
+    }
+    rendered.unmount();
+    window.innerWidth = 1024;
+  });
+});
+
+// ===================================================================== //
+// F5-B 第一轮审核整改：维护建议 → 真实预填刷新表单（项一 / 项十）
+// ===================================================================== //
+const mkRec = (over: Record<string, unknown> = {}) => ({
+  recommendation_id: 'rec-stock-caps', code: 'refresh_stale_capability', priority: 'medium',
+  title: '刷新过期能力', reason: '存在超过 TTL 的缓存单元。', affected_count: 2,
+  target_kind: 'stock', preset: null, symbols: ['600519.SH'], capabilities: ['quote', 'fund_flow'],
+  short_scope: null, can_prefill_refresh: true, requires_workbuddy: false,
+  allow_summary_only: false, warnings: [], ...over,
+});
+const recEnvelope = (items: unknown[]) =>
+  OPS_ENVELOPE({ total: items.length, limit: 20, offset: 0, items });
+
+// 项二反例场景：worker 超时只允许出现一条 high 告警
+const ALERTS_WORKER_TIMEOUT = OPS_ENVELOPE({
+  total: 1, limit: 20, offset: 0, items: [{
+    alert_id: 'recent_worker_timeout-9f8e7d6c', severity: 'high', category: 'recent_worker_timeout',
+    title: 'Worker 处理超时', message: '存在最近 24 小时内因 worker 超时失败的刷新请求。',
+    capability: null, symbol: null, short_scope: null, affected_count: 1,
+    first_observed_at: '2026-08-06T00:00:00Z', last_observed_at: '2026-08-06T00:00:00Z',
+    evidence: { request_count: 1 }, recommendation_code: 'retry_recent_failure', is_actionable: true,
+  }],
+});
+
+async function renderWithRecs(items: unknown[], alerts: unknown = OPS_ALERTS) {
+  (api.westockHealth as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_HEALTH);
+  (api.westockAlerts as ReturnType<typeof vi.fn>).mockResolvedValue(alerts);
+  (api.westockRecommendations as ReturnType<typeof vi.fn>).mockResolvedValue(recEnvelope(items));
+  (api.westockTrends as ReturnType<typeof vi.fn>).mockResolvedValue(OPS_TRENDS_7);
+  (api.westockCreateRefreshRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, ...REQUEST });
+  return renderPage();
+}
+const lastCreateBody = () => {
+  const calls = (api.westockCreateRefreshRequest as ReturnType<typeof vi.fn>).mock.calls;
+  return (calls.length ? calls[calls.length - 1] : undefined)?.[0] as Record<string, unknown>;
+};
+
+describe('Westock 维护建议真实预填（F5-B 第一轮整改）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    echartsInit.mockClear();
+  });
+
+  it('①②③④ 点个股能力建议→切连接 Tab→指定能力模式→建议能力被勾选→未点创建前不 POST', async () => {
+    await renderWithRecs([mkRec()]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    fireEvent.click(await screen.findByRole('button', { name: '填入刷新表单' }));
+
+    // ① 自动切回连接 Tab（刷新表单可见）
+    expect(await screen.findByRole('button', { name: '创建刷新请求' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '连接状态' })).toHaveAttribute('aria-selected', 'true');
+
+    // ② 个股刷新方式切到「指定能力」，且预设下拉不再渲染
+    const mode = screen.getByLabelText('个股刷新方式') as HTMLSelectElement;
+    expect(mode.value).toBe('capabilities');
+    expect(screen.getByTestId('stock-capabilities')).toBeInTheDocument();
+    expect(screen.queryByLabelText('预设')).toBeNull();
+
+    // ③ 建议给出的能力被真实勾选，未建议的能力不勾选
+    expect((screen.getByLabelText('能力 quote') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('能力 fund_flow') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('能力 news') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByPlaceholderText('600519.SH,000001.SZ') as HTMLInputElement).value)
+      .toBe('600519.SH');
+
+    // ④ 用户未点「创建刷新请求」前，绝不发起任何写请求
+    expect(api.westockCreateRefreshRequest).not.toHaveBeenCalled();
+  });
+
+  it('⑤ 点创建后请求体含 capabilities 且完全不含 preset', async () => {
+    await renderWithRecs([mkRec()]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    fireEvent.click(await screen.findByRole('button', { name: '填入刷新表单' }));
+    await screen.findByTestId('stock-capabilities');
+
+    fireEvent.click(screen.getByRole('button', { name: '创建刷新请求' }));
+    await waitFor(() => expect(api.westockCreateRefreshRequest).toHaveBeenCalledTimes(1));
+    const body = lastCreateBody();
+    expect(body).toEqual({
+      target: 'stock',
+      capabilities: ['quote', 'fund_flow'],
+      symbols: ['600519.SH'],
+      allow_summary_only: false,
+    });
+    expect('preset' in body).toBe(false);
+  });
+
+  it('⑥ 非本地股票建议预填 allow_summary_only=true 并随请求提交', async () => {
+    await renderWithRecs([mkRec({
+      recommendation_id: 'rec-nonlocal',
+      symbols: ['600519.SH', '000001.SZ'],
+      capabilities: ['news'],
+      allow_summary_only: true,
+    })]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    fireEvent.click(await screen.findByRole('button', { name: '填入刷新表单' }));
+    await screen.findByTestId('stock-capabilities');
+
+    const chk = screen.getByLabelText('允许非本地股票摘要（summary-only）') as HTMLInputElement;
+    expect(chk.checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '创建刷新请求' }));
+    await waitFor(() => expect(api.westockCreateRefreshRequest).toHaveBeenCalledTimes(1));
+    expect(lastCreateBody()).toEqual({
+      target: 'stock',
+      capabilities: ['news'],
+      symbols: ['600519.SH', '000001.SZ'],
+      allow_summary_only: true,
+    });
+  });
+
+  it('⑦ screener 建议无 result_id 时不给预填按钮，只提示原筛选重新导出', async () => {
+    await renderWithRecs([mkRec({
+      recommendation_id: 'rec-screener', code: 'rerun_screener_export', priority: 'medium',
+      title: '重新导出筛选结果', target_kind: 'screener', preset: null,
+      symbols: [], capabilities: [], short_scope: 'q_ab12…',
+      can_prefill_refresh: false, requires_workbuddy: true,
+    })]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    expect(await screen.findByText('重新导出筛选结果')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '填入刷新表单' })).toBeNull();
+    expect(screen.getByText('通过原筛选结果重新导出')).toBeInTheDocument();
+    expect(api.westockCreateRefreshRequest).not.toHaveBeenCalled();
+    // 完整 q scope 绝不外泄
+    expect(document.body.textContent ?? '').not.toContain('q_' + 'a'.repeat(64));
+  });
+
+  it('⑧ 回执 / 消费者类建议始终没有刷新按钮', async () => {
+    await renderWithRecs([
+      mkRec({
+        recommendation_id: 'rec-receipt', code: 'inspect_receipt_chain', priority: 'critical',
+        title: '核查回执审计链', target_kind: null, symbols: [], capabilities: [],
+        can_prefill_refresh: false, requires_workbuddy: false,
+      }),
+      mkRec({
+        recommendation_id: 'rec-consumer', code: 'inspect_consumer_schema', priority: 'high',
+        title: '核查数据模式', target_kind: null, symbols: [], capabilities: [],
+        can_prefill_refresh: false, requires_workbuddy: false,
+      }),
+    ]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    expect(await screen.findByText('核查回执审计链')).toBeInTheDocument();
+    expect(screen.getByText('核查数据模式')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: '填入刷新表单' })).toHaveLength(0);
+    expect(screen.getAllByText('仅检查说明')).toHaveLength(2);
+  });
+
+  it('⑨ worker 超时只出现一条对应 high 告警，不重复计为刷新失败', async () => {
+    await renderWithRecs([mkRec()], ALERTS_WORKER_TIMEOUT);
+    fireEvent.click(screen.getByRole('tab', { name: '活动告警' }));
+    expect(await screen.findByText('Worker 处理超时')).toBeInTheDocument();
+    expect(screen.getAllByText('Worker 超时')).toHaveLength(1); // 中文 category 仅一行
+    // high 徽标仅一枚（排除严重度下拉里的 <option>）
+    const highBadges = screen.getAllByText('高').filter((el) => el.classList.contains('badge'));
+    expect(highBadges).toHaveLength(1);
+    expect(screen.queryByText('刷新失败')).toBeNull();          // 不产生重复失败告警
+  });
+
+  it('⑩ 预填能力用户可改，提交体反映修改后的能力集合', async () => {
+    await renderWithRecs([mkRec()]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    fireEvent.click(await screen.findByRole('button', { name: '填入刷新表单' }));
+    await screen.findByTestId('stock-capabilities');
+
+    fireEvent.click(screen.getByLabelText('能力 fund_flow')); // 取消建议能力
+    fireEvent.click(screen.getByLabelText('能力 news'));      // 追加自选能力
+    expect((screen.getByLabelText('能力 fund_flow') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('能力 news') as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '创建刷新请求' }));
+    await waitFor(() => expect(api.westockCreateRefreshRequest).toHaveBeenCalledTimes(1));
+    expect(lastCreateBody()).toEqual({
+      target: 'stock',
+      capabilities: ['quote', 'news'],
+      symbols: ['600519.SH'],
+      allow_summary_only: false,
+    });
+  });
+
+  it('⑪ 能力全部取消后拒绝提交，且不会退回 preset 模式偷发预设', async () => {
+    await renderWithRecs([mkRec({ capabilities: ['quote'] })]);
+    fireEvent.click(screen.getByRole('tab', { name: '维护建议' }));
+    fireEvent.click(await screen.findByRole('button', { name: '填入刷新表单' }));
+    await screen.findByTestId('stock-capabilities');
+
+    fireEvent.click(screen.getByLabelText('能力 quote'));
+    fireEvent.click(screen.getByRole('button', { name: '创建刷新请求' }));
+    expect(await screen.findByText(/请选择 1–20 个能力/)).toBeInTheDocument();
+    expect(api.westockCreateRefreshRequest).not.toHaveBeenCalled();
   });
 });
