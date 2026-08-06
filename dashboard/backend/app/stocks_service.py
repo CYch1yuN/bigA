@@ -354,6 +354,26 @@ class CuratedStocksService:
         self.westock_store = WestockCacheStore(self.root / "state" / "dashboard" / "westock")
         self.reports_dir = self.root / "reports" / "phase-4" / "daily"
         self.state_dir = self.root / "state" / "automation"
+        # symbol(6 位无后缀) -> 证券名称；主数据缺失时为空映射（不阻断列表）
+        self._security_names: dict[str, str] = self._load_security_names()
+
+    def _load_security_names(self) -> dict[str, str]:
+        """读取 data/metadata/security_master.parquet 的名称映射（best-effort）。"""
+        path = self.root / "data" / "metadata" / "security_master.parquet"
+        try:
+            if not path.exists():
+                return {}
+            df = pd.read_parquet(path)
+            if df.empty or "symbol" not in df.columns or "name" not in df.columns:
+                return {}
+            mapping: dict[str, str] = {}
+            for sym, name in zip(df["symbol"], df["name"]):
+                key = str(sym).strip()
+                if key and name is not None and str(name).strip():
+                    mapping[key] = str(name).strip()
+            return mapping
+        except Exception:  # noqa: BLE001 - 主数据是可选增强，失败不阻断
+            return {}
 
     # ------------------------------------------------------------------ #
     # curated 读取（限定固定目录；数据最新文件；trade_date 类型标准化）
@@ -424,6 +444,7 @@ class CuratedStocksService:
             latest = str(df["_td_norm"].iloc[-1])
             items.append({
                 "symbol": symbol,
+                "name": self._security_names.get(symbol[:6]),
                 "latest_trade_date": latest,
                 "bar_count": int(len(df)),
             })

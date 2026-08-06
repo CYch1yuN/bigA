@@ -437,6 +437,7 @@ export type StockRange = '1m' | '3m' | '6m' | '1y' | '3y' | 'all';
 
 export interface StockListItem {
   symbol: string;
+  name?: string | null;
   latest_trade_date: string;
   bar_count: number;
 }

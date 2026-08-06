@@ -38,11 +38,12 @@ export function StockListPage() {
           ) : (
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>代码</th><th>最新本地交易日</th><th>K 线数量</th><th>可用性</th><th /></tr></thead>
+                <thead><tr><th>代码</th><th>名称</th><th>最新本地交易日</th><th>K 线数量</th><th>可用性</th><th /></tr></thead>
                 <tbody>
                   {list.data.data.items.map((item) => (
                     <tr key={item.symbol}>
                       <td><strong>{item.symbol}</strong></td>
+                      <td>{item.name ?? '—'}</td>
                       <td>{item.latest_trade_date}</td>
                       <td>{item.bar_count}</td>
                       <td><span className="badge badge-success">本地数据可用</span></td>
