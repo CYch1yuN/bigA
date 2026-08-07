@@ -1,6 +1,7 @@
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/ui';
 import { OperationCenter } from '../components/OperationCenter';
+import { PredictionSummaryCard } from '../components/PredictionSummaryCard';
 import { DataBoundary, Metric, StatusBadge, formatTime, useDashboardSnapshot } from '../dashboard/data';
 
 export function OverviewPage() {
@@ -37,6 +38,10 @@ export function OverviewPage() {
 
       <div style={{ marginTop: 16 }}>
         <OperationCenter />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <PredictionSummaryCard />
       </div>
 
       <div style={{ marginTop: 16 }}>

@@ -442,6 +442,44 @@ export interface StockListItem {
   bar_count: number;
 }
 
+export type PredictionGateStatus = 'passed' | 'not_passed' | 'insufficient_data';
+export type PredictionAvailability = 'fresh' | 'stale' | 'unavailable';
+
+export interface PredictionSummaryData {
+  model_version: string;
+  task_name: string;
+  horizon_days: number;
+  target_return: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  auc: number | null;
+  sample_count: number;
+  test_start: string;
+  test_end: string;
+  net_return: number | null;
+  max_drawdown: number | null;
+  sharpe: number | null;
+  benchmark_return: number | null;
+  gate_status: PredictionGateStatus;
+  gate_version: string;
+  gate_reasons: string[];
+}
+
+export interface PredictionSummaryResponse {
+  ok: boolean;
+  schema_version: number;
+  source: string;
+  as_of: string | null;
+  fetched_at: string | null;
+  cache_status: PredictionAvailability;
+  is_realtime: boolean;
+  transport: string;
+  availability: PredictionAvailability;
+  data: PredictionSummaryData | null;
+  warnings: string[];
+}
+
 export interface StocksListResponse {
   ok: boolean;
   schema_version: number;
@@ -986,4 +1024,5 @@ export const api = {
   screenerCandidatesList: () => request<{ ok: boolean; items: Candidate[]; note: string }>('/api/screener/candidates'),
   screenerCandidatesAdd: (payload: { symbol: string; source_result_id: string; note?: string }) => request<{ ok: boolean; symbol: string; added: boolean }>('/api/screener/candidates', { method: 'POST', body: JSON.stringify(payload) }),
   screenerCandidatesDelete: (symbol: string) => request<{ ok: boolean; deleted: string }>(`/api/screener/candidates/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+  predictionSummary: () => request<PredictionSummaryResponse>('/api/research/prediction-summary'),
 };

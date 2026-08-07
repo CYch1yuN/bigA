@@ -33,7 +33,7 @@ from .config import (
     load_config,
 )
 from .data_service import build_dashboard_snapshot
-from .errors import DashboardError, error_body
+from .errors import DashboardError, error_body, ok_body
 from .executors import SubprocessExecutor, validate_date_arg
 from .jobs import (
     ALL_JOB_TYPES,
@@ -44,6 +44,7 @@ from .jobs import (
 )
 from .security import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, SecurityManager
 from .market_service import MarketService, build_market_service
+from .prediction_service import PredictionSummaryService, build_prediction_service
 from .screener_service import MAX_BODY_BYTES, ScreenerError, ScreenerService, build_screener_service
 from .stocks_deep_service import _INTEL_CATEGORIES, StocksDeepService, build_stocks_deep_service
 from .stocks_service import CuratedStocksService, build_stocks_service
@@ -156,6 +157,7 @@ def create_app(
     app.state.stocks_deep: StocksDeepService = build_stocks_deep_service(root)
     app.state.market: MarketService = build_market_service(root)
     app.state.screener: ScreenerService = build_screener_service(root)
+    app.state.prediction_summary: PredictionSummaryService = build_prediction_service(root)
 
     # 启动时把遗留 queued/running 作业标记为 interrupted
     interrupted = job_manager.cleanup_on_startup()
@@ -571,6 +573,16 @@ def create_app(
             return JSONResponse(app.state.stocks_service.research(symbol))
         except ValueError as exc:
             return JSONResponse(error_body("invalid_symbol", str(exc)), status_code=400)
+
+    # ---------- 预测有效性摘要（只读，严格样本外评估；绝不显示堆栈/路径） ----------
+
+    @app.get("/api/research/prediction-summary")
+    async def prediction_summary(request: Request) -> JSONResponse:
+        await _require_session(request, security, csrf_required=False)
+        try:
+            return JSONResponse(ok_body(app.state.prediction_summary.summary()))
+        except Exception:  # noqa: BLE001 - 兜底：任何意外异常都返回 unavailable，不泄露堆栈
+            return JSONResponse(ok_body(app.state.prediction_summary.summary_safe_unavailable()))
 
     # ---------- Phase C：个股深度数据聚合（只读 Westock 缓存） ----------
 
